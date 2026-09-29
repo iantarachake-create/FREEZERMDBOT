@@ -9,11 +9,28 @@ cmd({
     filename: __filename
 }, async (sock, m, args) => {
     const start = Date.now();
-    const sent = await m.reply('Pinging...');
+    const sent = await m.reply(
+`┏━━━━━━━━━━━━━━━━━━┓
+┃ ❍ *PING* ❍
+┣━━━━━━━━━━━━━━━━━━┫
+┃
+┃ ❍ Checking...
+┃
+┗━━━━━━━━━━━━━━━━━━┛`
+    );
+
     const latency = Date.now() - start;
 
     await sock.sendMessage(m.from, {
-        text: `🏓 Pong!\nLatency: ${latency}ms`,
+        text: `╔══════════════════╗
+║ ❍ *PONG* ❍
+║
+║ ╭──────────────╮
+║ │ ❍ Speed × ${latency}ms
+║ │ ❍ Status × Online
+║ ╰──────────────╯
+║
+╚══════════════════╝`,
         edit: sent.key
     });
 });

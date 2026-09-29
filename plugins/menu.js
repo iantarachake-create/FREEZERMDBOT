@@ -12,9 +12,9 @@ cmd({
 }, async (sock, m) => {
 
     try {
-        // ─────────────────────────────────────────────
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         // 1. PREFIX, DATE, TIME & GREETING
-        // ─────────────────────────────────────────────
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         const TZ = 'Africa/Nairobi';
         const prefix = global.BOT_PREFIX || '.';
         const now = new Date();
@@ -47,16 +47,16 @@ cmd({
             hour < 21 ? '🌇 Good Evening' :
                         '🌙 Good Night';
 
-        // ─────────────────────────────────────────────
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         // 2. BOT INFO
-        // ─────────────────────────────────────────────
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         const botName  = global.BOT_NAME || 'FREEZER-MD';
         const botOwner = global.ownerName || 'Freezer';
         const user     = m.pushName || m.sender?.split('@')[0] || 'User';
 
-        // ─────────────────────────────────────────────
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         // 3. UPTIME & RAM
-        // ─────────────────────────────────────────────
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         const up = Math.floor(process.uptime());
 
         const d = Math.floor(up / 86400);
@@ -74,25 +74,9 @@ cmd({
         const ramStr =
             `${(process.memoryUsage().rss / 1024 / 1024).toFixed(1)} MB`;
 
-        // ─────────────────────────────────────────────
-        // 4. LAYOUT
-        // ─────────────────────────────────────────────
-        const RULE = '─'.repeat(20);
-
-        const openBox = (title) =>
-            `╭──「 ${title} 」`;
-
-        const row = (text) =>
-            `│ ${text}`;
-
-        const spacer = '│';
-
-        const closeBox =
-            `╰${RULE}`;
-
-        // ─────────────────────────────────────────────
-        // 5. CATEGORIES
-        // ─────────────────────────────────────────────
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // 4. CATEGORY ORDER
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         const CATEGORY_ORDER = [
             'General',
             'Downloaders',
@@ -121,9 +105,9 @@ cmd({
             Security: '🛡️'
         };
 
-        // ─────────────────────────────────────────────
-        // 6. LOAD & GROUP PLUGINS
-        // ─────────────────────────────────────────────
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // 5. LOAD & GROUP PLUGINS
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         const grouped = {};
         const seen = new Set();
 
@@ -160,9 +144,9 @@ cmd({
             }
         }
 
-        // ─────────────────────────────────────────────
-        // 7. CATEGORY ORDER
-        // ─────────────────────────────────────────────
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // 6. CATEGORY LIST
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         const allCategories = [
             ...CATEGORY_ORDER.filter(
                 c => grouped[c]?.length
@@ -175,15 +159,17 @@ cmd({
             )
         ];
 
-        // ─────────────────────────────────────────────
-        // 8. COMMAND SECTIONS
-        // ─────────────────────────────────────────────
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // 7. COMMAND SECTIONS
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         const commandSections = totalPlugins === 0
 
             ? [
-                openBox('📭 EMPTY'),
-                row('No commands loaded'),
-                closeBox
+                '┏▣ ◈ *📭 EMPTY* ◈',
+                '┃',
+                '┃│ No commands loaded',
+                '┃',
+                '┗▣'
             ].join('\n')
 
             : allCategories.map(category => {
@@ -196,64 +182,60 @@ cmd({
                     .sort((a, b) => a.localeCompare(b));
 
                 return [
-                    openBox(
-                        `${icon} ${category.toUpperCase()} • ${list.length}`
-                    ),
-
-                    spacer,
+                    `┏▣ ◈ *${icon} ${category.toUpperCase()}* ◈`,
+                    '┃',
 
                     ...list.map(
-                        name => row(`★ ${prefix}${name}`)
+                        name => `┃│ ★ ${prefix}${name}`
                     ),
 
-                    spacer,
-
-                    closeBox
-
+                    '┃',
+                    '┗▣'
                 ].join('\n');
 
             }).join('\n\n');
 
-        // ─────────────────────────────────────────────
-        // 9. HEADER
-        // ─────────────────────────────────────────────
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // 8. MAIN HEADER
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         const header = [
-            `╭──「 ❄️ *${botName}* ❄️ 」`,
-            spacer,
-
-            row(`${greeting}, *${user}* ★`),
-
-            spacer,
-
-            row(`👑 *Owner*   ─ ${botOwner}`),
-            row(`🧩 *Plugins* ─ ${totalPlugins}`),
-            row(`🔧 *Prefix*  ─ ${prefix}`),
-            row(`⚡ *Uptime*  ─ ${uptimeStr}`),
-            row(`📊 *RAM*     ─ ${ramStr}`),
-            row(`📅 *Date*    ─ ${date}`),
-            row(`🕐 *Time*    ─ ${time}`),
-
-            spacer,
-            closeBox
+            `┏▣ ◈ *𝗙𝗥𝗘𝗘𝗭𝗘𝗥 𝗠𝗗* ◈`,
+            '┃',
+            `┃│ ${greeting}, *${user}* ★`,
+            '┃',
+            '┃┌─ STATUS OVERVIEW ───',
+            `┃│ 🕒 Time      : ${date}, ${time}`,
+            '┃│ 🟢 Status    : Online & Ready',
+            `┃│ ⚡ Prefix    : ${prefix}`,
+            `┃│ 👑 Owner     : ${botOwner}`,
+            `┃│ 🧩 Plugins   : ${totalPlugins}`,
+            `┃│ ⚡ Uptime    : ${uptimeStr}`,
+            `┃│ 📊 RAM       : ${ramStr}`,
+            '┃└─────────────',
+            '┃',
+            `┃📌 ${botName} • Command Center`,
+            '┃',
+            '┗▣'
         ].join('\n');
 
-        // ─────────────────────────────────────────────
-        // 10. FOOTER
-        // ─────────────────────────────────────────────
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // 9. FOOTER
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         const footer = [
-            `╭──「 💠 *${botName}* 」`,
-            spacer,
-
-            row('★ Fast  •  ★ Secure  •  ★ Stable'),
-            row(`★ Type *${prefix}<command>* to use`),
-
-            spacer,
-            closeBox
+            '┏▣ ◈ *𝗙𝗥𝗘𝗘𝗭𝗘𝗥 𝗠𝗗* ◈',
+            '┃',
+            '┃│ ★ Fast',
+            '┃│ ★ Secure',
+            '┃│ ★ Stable',
+            '┃',
+            `┃│ 💡 Use *${prefix}<command>*`,
+            '┃',
+            '┗▣'
         ].join('\n');
 
-        // ─────────────────────────────────────────────
-        // 11. FINAL MENU
-        // ─────────────────────────────────────────────
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // 10. FINAL MENU
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         const menuText = [
             header,
             '',
@@ -262,9 +244,9 @@ cmd({
             footer
         ].join('\n').trim();
 
-        // ─────────────────────────────────────────────
-        // 12. SEND MENU
-        // ─────────────────────────────────────────────
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // 11. SEND MENU
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         if (!global.menuImage) {
             return await m.reply(menuText);
         }
@@ -328,11 +310,11 @@ cmd({
 
             await m.reply(
                 [
-                    '╭──「 ❌ MENU ERROR 」',
-                    '│',
-                    `│ ★ ${error.message}`,
-                    '│',
-                    `╰${'─'.repeat(20)}`
+                    '┏▣ ◈ *❌ MENU ERROR* ◈',
+                    '┃',
+                    `┃│ ★ ${error.message}`,
+                    '┃',
+                    '┗▣'
                 ].join('\n')
             );
 

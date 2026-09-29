@@ -38,45 +38,48 @@ cmd({
 }, async (sock, m) => {
 
     try {
-        const formattedUptime = formatUptime(process.uptime());
+
+        // ─────────────────────────────────────────────
+        // SYSTEM INFORMATION
+        // ─────────────────────────────────────────────
+
+        const formattedUptime =
+            formatUptime(process.uptime());
 
         const memory = process.memoryUsage();
+
         const memoryMB =
             (memory.rss / 1024 / 1024).toFixed(1);
 
-        const nodeVersion = process.version;
+        const nodeVersion =
+            process.version;
 
         // ─────────────────────────────────────────────
-        // FREEZER-MD DESIGN
+        // FREEZER-MD PONG STYLE
         // ─────────────────────────────────────────────
-
-        const TOP =
-            '╭━━━〔 ❄️ 𝗙𝗥𝗘𝗘𝗭𝗘𝗥-𝗠𝗗 〕━━━╮';
-
-        const MID =
-            '┣━━━━━━━━━━━━━━━━━━━━━━❄️';
-
-        const BOT =
-            '╰━━━━━━━━━━━━━━━━━━━━━━❄️';
 
         const uptimeText =
-`${TOP}
-┃
-┃ ⚡ *𝗦𝗬𝗦𝗧𝗘𝗠 𝗦𝗧𝗔𝗧𝗨𝗦*
-┃
-┃ 🟢 Status : *ONLINE*
-┃ ⏱️ Uptime : *${formattedUptime}*
-┃ 🧠 RAM    : *${memoryMB} MB*
-┃ 🟢 Node   : *${nodeVersion}*
-┃
-${MID}
-┃ ❄️ Engine : *FREEZER-MD*
-┃ 🛡️ Status : *Protected*
-┃
-${BOT}
+`╔══════════════════════════╗
+║   ❄️ ❍ *𝗙𝗥𝗘𝗘𝗭𝗘𝗥-𝗠𝗗* ❍
+╠══════════════════════════╣
+║
+║   🟢 ❍ Status × *Online*
+║   ⏱️ ❍ Uptime × *${formattedUptime}*
+║   🧠 ❍ RAM × *${memoryMB} MB*
+║   🟢 ❍ Node × *${nodeVersion}*
+║
+╠══════════════════════════╣
+║   ⚡ ❍ Engine × *Active*
+║   🛡️ ❍ Security × *Protected*
+║
+╚══════════════════════════╝
 
 ❄️ *𝗙𝗔𝗦𝗧 • 𝗦𝗧𝗔𝗕𝗟𝗘 • 𝗣𝗢𝗪𝗘𝗥𝗙𝗨𝗟*
 > *𝗕𝗨𝗜𝗟𝗧 𝗗𝗜𝗙𝗙𝗘𝗥𝗘𝗡𝗧.*`;
+
+        // ─────────────────────────────────────────────
+        // SEND INTERACTIVE MESSAGE
+        // ─────────────────────────────────────────────
 
         await sendInteractiveMessage(
             sock,
@@ -114,14 +117,15 @@ ${BOT}
         );
 
         await m.reply(
-`╭━━━〔 ❄️ 𝗙𝗥𝗘𝗘𝗭𝗘𝗥-𝗠𝗗 〕━━━╮
-┃
-┃ ❌ *SYSTEM CHECK FAILED*
-┃
-┃ 🟢 Status : *ONLINE*
-┃ ⏱️ Uptime : *${formatUptime(process.uptime())}*
-┃
-╰━━━━━━━━━━━━━━━━━━━━━━❄️`
+`╔══════════════════════════╗
+║   ❌ ❍ *𝗦𝗬𝗦𝗧𝗘𝗠 𝗖𝗛𝗘𝗖𝗞* ❍
+╠══════════════════════════╣
+║
+║   🟢 ❍ Status × *Online*
+║   ⏱️ ❍ Uptime × *${formatUptime(process.uptime())}*
+║   ⚠️ ❍ Check × *Failed*
+║
+╚══════════════════════════╝`
         );
     }
 });

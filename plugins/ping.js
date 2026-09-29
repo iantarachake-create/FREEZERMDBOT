@@ -11,10 +11,10 @@ cmd({
     const start = Date.now();
     const sent = await m.reply(
 `┏━━━━━━━━━━━━━━━━━━┓
-┃ ❍ *PING* ❍
+┃   🏓 ❍ *PING* ❍
 ┣━━━━━━━━━━━━━━━━━━┫
 ┃
-┃ ❍ Checking...
+┃   ⏳ ❍ Checking...
 ┃
 ┗━━━━━━━━━━━━━━━━━━┛`
     );
@@ -23,12 +23,12 @@ cmd({
 
     await sock.sendMessage(m.from, {
         text: `╔══════════════════╗
-║ ❍ *PONG* ❍
+║   🏓 ❍ *PONG* ❍
+╠══════════════════╣
 ║
-║ ╭──────────────╮
-║ │ ❍ Speed × ${latency}ms
-║ │ ❍ Status × Online
-║ ╰──────────────╯
+║   ⚡ ❍ Speed × ${latency}ms
+║   🟢 ❍ Status × Online
+║   🤖 ❍ Bot × Active
 ║
 ╚══════════════════╝`,
         edit: sent.key

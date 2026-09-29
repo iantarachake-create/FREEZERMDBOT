@@ -4,176 +4,315 @@ const os = require('os');
 const crypto = require('crypto');
 const { execSync, spawn } = require('child_process');
 
-// ── GitHub configuration ──────────────────────────────────────────────────
-const repoOwner = 'Freezerfred';
-const repoName = 'Freezer-MD-';
-const branch = 'main';
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║                     FREEZER MD • UPDATE SYSTEM                     ║
+// ╚══════════════════════════════════════════════════════════════════════╝
 
-// ── Paths ────────────────────────────────────────────────────────────────
-const PROJECT_ROOT = path.resolve(__dirname, '..'); // plugins/ -> project root
+// ── GitHub Configuration ───────────────────────────────────────────────
+const GITHUB = {
+    owner: 'iantarachake-create',
+    repo: 'FREEZERMDBOT',
+    branch: 'main'
+};
+
+// ── Project Paths ──────────────────────────────────────────────────────
+const PROJECT_ROOT = path.resolve(__dirname, '..');
 const COMMIT_FILE = path.join(PROJECT_ROOT, '.last_update_commit');
 
-// Anything matching these (exact match, or as a directory prefix) is NEVER
-// touched by the update: never overwritten, never deleted, never entered.
-// Extend this list if your real project has other credential/data folders.
+// ── Protected Files & Directories ──────────────────────────────────────
+// These paths are NEVER overwritten, deleted, or entered during updates.
 const PROTECTED_PATHS = [
     'config.js',
     '.env',
+
+    // Sessions / authentication
     'session',
     'sessions',
     'auth_info',
+
+    // Persistent data
     'database',
     'db',
     'data',
+
+    // Dependencies
     'node_modules',
     'package-lock.json',
+
+    // Update system
     '.last_update_commit',
     '.git',
+
+    // Temporary/runtime files
     'tmp',
     'temp',
     'logs',
     'media'
 ];
 
+// ── Protected Path Checker ────────────────────────────────────────────
 function isProtected(relPath) {
-    const normalized = relPath.split(path.sep).join('/');
-    return PROTECTED_PATHS.some(p => normalized === p || normalized.startsWith(p + '/'));
+    const normalized = relPath
+        .split(path.sep)
+        .join('/');
+
+    return PROTECTED_PATHS.some(
+        protectedPath =>
+            normalized === protectedPath ||
+            normalized.startsWith(protectedPath + '/')
+    );
 }
 
-// ── GitHub API helpers ──────────────────────────────────────────────────
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║                         GITHUB HELPERS                              ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+
 async function getLatestCommit() {
-    const res = await fetch(
-        `https://api.github.com/repos/${repoOwner}/${repoName}/commits/${branch}`,
-        { headers: { 'User-Agent': 'Freezer-MD-Updater' } }
-    );
+    const apiUrl =
+        `https://api.github.com/repos/` +
+        `${GITHUB.owner}/${GITHUB.repo}/commits/${GITHUB.branch}`;
 
-    if (!res.ok) throw new Error(`GitHub API error: ${res.status}`);
+    const response = await fetch(apiUrl, {
+        headers: {
+            'User-Agent': 'FREEZER-MD-Updater',
+            'Accept': 'application/vnd.github+json'
+        }
+    });
 
-    const data = await res.json();
+    if (!response.ok) {
+        throw new Error(`GitHub API error: ${response.status}`);
+    }
+
+    const data = await response.json();
 
     return {
         sha: data.sha,
-        message: (data.commit?.message || '').split('\n')[0], // first line only
-        date: data.commit?.committer?.date || data.commit?.author?.date || null
+        message: (data.commit?.message || 'No commit message')
+            .split('\n')[0],
+        date:
+            data.commit?.committer?.date ||
+            data.commit?.author?.date ||
+            null
     };
 }
 
 function getLocalCommit() {
     try {
-        return fs.readFileSync(COMMIT_FILE, 'utf8').trim() || null;
+        return (
+            fs.readFileSync(COMMIT_FILE, 'utf8').trim() ||
+            null
+        );
     } catch {
         return null;
     }
 }
 
 function saveLocalCommit(sha) {
-    fs.writeFileSync(COMMIT_FILE, sha, 'utf8');
+    fs.writeFileSync(
+        COMMIT_FILE,
+        sha,
+        'utf8'
+    );
 }
 
-// ── Download + extract ──────────────────────────────────────────────────
-async function downloadZip(destZipPath) {
-    const zipUrl = `https://github.com/${repoOwner}/${repoName}/archive/refs/heads/${branch}.zip`;
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║                         DOWNLOAD SYSTEM                             ║
+// ╚══════════════════════════════════════════════════════════════════════╝
 
-    const res = await fetch(zipUrl, {
-        headers: { 'User-Agent': 'Freezer-MD-Updater' }
+async function downloadZip(destination) {
+    const zipUrl =
+        `https://github.com/${GITHUB.owner}/` +
+        `${GITHUB.repo}/archive/refs/heads/${GITHUB.branch}.zip`;
+
+    const response = await fetch(zipUrl, {
+        headers: {
+            'User-Agent': 'FREEZER-MD-Updater'
+        }
     });
 
-    if (!res.ok) throw new Error(`Failed to download update ZIP: ${res.status}`);
+    if (!response.ok) {
+        throw new Error(
+            `Failed to download update ZIP: ${response.status}`
+        );
+    }
 
-    const buffer = Buffer.from(await res.arrayBuffer());
-    fs.writeFileSync(destZipPath, buffer);
+    const buffer = Buffer.from(
+        await response.arrayBuffer()
+    );
+
+    fs.writeFileSync(destination, buffer);
 }
 
-function extractZip(zipPath, destDir) {
+function extractZip(zipPath, destination) {
     let AdmZip;
 
     try {
         AdmZip = require('adm-zip');
-    } catch (err) {
-        throw new Error('Missing dependency "adm-zip". Run: npm install adm-zip');
+    } catch {
+        throw new Error(
+            'Missing dependency "adm-zip". Run: npm install adm-zip'
+        );
     }
 
     const zip = new AdmZip(zipPath);
-    zip.extractAllTo(destDir, true);
 
-    // GitHub zips extract into a single top-level folder, e.g. "Freezer-MD-main/"
-    const entries = fs.readdirSync(destDir, { withFileTypes: true })
-        .filter(e => e.isDirectory());
+    zip.extractAllTo(destination, true);
 
-    if (entries.length !== 1) {
-        throw new Error('Unexpected ZIP structure after extraction.');
+    const directories = fs
+        .readdirSync(destination, {
+            withFileTypes: true
+        })
+        .filter(entry => entry.isDirectory());
+
+    if (directories.length !== 1) {
+        throw new Error(
+            'Unexpected GitHub ZIP structure after extraction.'
+        );
     }
 
-    return path.join(destDir, entries[0].name);
+    return path.join(
+        destination,
+        directories[0].name
+    );
 }
 
-// ── Validation (BEFORE touching the real project) ─────────────────────────
-function validateExtractedSource(srcRoot) {
-    const requiredEntries = ['index.js', 'package.json'];
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║                           VALIDATION                                ║
+// ╚══════════════════════════════════════════════════════════════════════╝
 
-    for (const entry of requiredEntries) {
-        if (!fs.existsSync(path.join(srcRoot, entry))) {
+function validateExtractedSource(sourceRoot) {
+    const requiredFiles = [
+        'index.js',
+        'package.json'
+    ];
+
+    for (const file of requiredFiles) {
+        const filePath = path.join(
+            sourceRoot,
+            file
+        );
+
+        if (!fs.existsSync(filePath)) {
             throw new Error(
-                `Downloaded update is missing "${entry}" — aborting before applying anything.`
+                `Downloaded update is missing "${file}". ` +
+                `Update cancelled before changing the bot.`
             );
         }
     }
 }
 
-// ── Recursive sync: copies new/changed files, removes files deleted    ──
-// ── upstream, and NEVER touches anything under a protected path.       ──
-function syncDirectory(srcDir, destDir, relPath = '') {
-    fs.mkdirSync(destDir, { recursive: true });
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║                         FILE SYNC SYSTEM                            ║
+// ╚══════════════════════════════════════════════════════════════════════╝
 
-    const srcEntries = fs.existsSync(srcDir)
-        ? fs.readdirSync(srcDir, { withFileTypes: true })
+function syncDirectory(
+    sourceDir,
+    destinationDir,
+    relativePath = ''
+) {
+    fs.mkdirSync(
+        destinationDir,
+        { recursive: true }
+    );
+
+    const sourceEntries = fs.existsSync(sourceDir)
+        ? fs.readdirSync(sourceDir, {
+            withFileTypes: true
+        })
         : [];
 
-    const destEntries = fs.existsSync(destDir)
-        ? fs.readdirSync(destDir, { withFileTypes: true })
+    const destinationEntries = fs.existsSync(destinationDir)
+        ? fs.readdirSync(destinationDir, {
+            withFileTypes: true
+        })
         : [];
 
-    // Remove files/folders that no longer exist upstream (skip protected paths)
-    for (const entry of destEntries) {
-        const entryRel = path.join(relPath, entry.name);
+    // ── Remove files deleted upstream ─────────────────────────────────
+    for (const entry of destinationEntries) {
+        const entryRelativePath = path.join(
+            relativePath,
+            entry.name
+        );
 
-        if (isProtected(entryRel)) continue;
-
-        const stillExists = srcEntries.some(e => e.name === entry.name);
-
-        if (!stillExists) {
-            fs.rmSync(path.join(destDir, entry.name), {
-                recursive: true,
-                force: true
-            });
-
-            console.log(`🗑️ update: removed (deleted upstream) ${entryRel}`);
-        }
-    }
-
-    // Copy new/updated files from source
-    for (const entry of srcEntries) {
-        const entryRel = path.join(relPath, entry.name);
-
-        if (isProtected(entryRel)) {
-            console.log(`🛡️ update: skipped protected path ${entryRel}`);
+        if (isProtected(entryRelativePath)) {
             continue;
         }
 
-        const srcPath = path.join(srcDir, entry.name);
-        const destPath = path.join(destDir, entry.name);
+        const existsUpstream = sourceEntries.some(
+            sourceEntry =>
+                sourceEntry.name === entry.name
+        );
+
+        if (!existsUpstream) {
+            fs.rmSync(
+                path.join(
+                    destinationDir,
+                    entry.name
+                ),
+                {
+                    recursive: true,
+                    force: true
+                }
+            );
+
+            console.log(
+                `🗑️ FREEZER UPDATE • Removed: ${entryRelativePath}`
+            );
+        }
+    }
+
+    // ── Copy new / updated files ──────────────────────────────────────
+    for (const entry of sourceEntries) {
+        const entryRelativePath = path.join(
+            relativePath,
+            entry.name
+        );
+
+        if (isProtected(entryRelativePath)) {
+            console.log(
+                `🛡️ FREEZER UPDATE • Protected: ${entryRelativePath}`
+            );
+            continue;
+        }
+
+        const sourcePath = path.join(
+            sourceDir,
+            entry.name
+        );
+
+        const destinationPath = path.join(
+            destinationDir,
+            entry.name
+        );
 
         if (entry.isDirectory()) {
-            syncDirectory(srcPath, destPath, entryRel);
+            syncDirectory(
+                sourcePath,
+                destinationPath,
+                entryRelativePath
+            );
         } else {
-            fs.mkdirSync(path.dirname(destPath), { recursive: true });
-            fs.copyFileSync(srcPath, destPath);
+            fs.mkdirSync(
+                path.dirname(destinationPath),
+                { recursive: true }
+            );
+
+            fs.copyFileSync(
+                sourcePath,
+                destinationPath
+            );
         }
     }
 }
 
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║                         FILE HASHING                                ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+
 function fileHash(filePath) {
-    if (!fs.existsSync(filePath)) return null;
+    if (!fs.existsSync(filePath)) {
+        return null;
+    }
 
     return crypto
         .createHash('sha1')
@@ -181,9 +320,10 @@ function fileHash(filePath) {
         .digest('hex');
 }
 
-// ── Update lock ─────────────────────────────────────────────────────────
-// Prevents two "update" commands (or an accidental double-send) from
-// running the sync/restart logic at the same time and corrupting files.
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║                          UPDATE LOCK                                ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+
 function isUpdateLocked() {
     return global.__freezerUpdateInProgress === true;
 }
@@ -192,28 +332,23 @@ function setUpdateLock(value) {
     global.__freezerUpdateInProgress = value;
 }
 
-// ── Restart (self-respawn with a startup verification window) ─────────────
-// 1. Frees the HTTP port (index.js exposes it as global.__freezerServer)
-//    BEFORE spawning the replacement process. Without this, the old and
-//    new process briefly race for the same port and the new one can crash
-//    with EADDRINUSE — the single biggest cause of a bad restart.
-// 2. After spawning, it watches the new process for a few seconds. If it
-//    exits almost immediately (e.g. broken code was pushed upstream), the
-//    restart is treated as FAILED: the port is handed back to the still-
-//    running OLD process instead of blindly exiting, so a bad update never
-//    takes the bot fully offline. Resolves `true` on a verified restart
-//    (in which case this process exits and never returns) or `false` if
-//    the restart was aborted and the old process is still alive.
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║                         SAFE RESTART                                ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+
 function restartBot({ onFailure } = {}) {
-    return new Promise((resolve) => {
-        const finishFail = async (reason) => {
+    return new Promise(resolve => {
+
+        const failRestart = async reason => {
             try {
                 if (
                     global.__freezerServer &&
                     !global.__freezerServer.listening &&
                     global.__freezerPort
                 ) {
-                    global.__freezerServer.listen(global.__freezerPort);
+                    global.__freezerServer.listen(
+                        global.__freezerPort
+                    );
                 }
             } catch (_) {}
 
@@ -226,52 +361,65 @@ function restartBot({ onFailure } = {}) {
             resolve(false);
         };
 
-        const doSpawn = () => {
+        const spawnReplacement = () => {
             let child;
 
             try {
-                child = spawn(process.argv[0], process.argv.slice(1), {
-                    cwd: PROJECT_ROOT,
-                    detached: true,
-                    stdio: 'inherit', // shares real fds so logs survive after this process exits
-                    env: process.env
-                });
-            } catch (err) {
-                finishFail(`Failed to spawn new process: ${err.message}`);
-                return;
+                child = spawn(
+                    process.argv[0],
+                    process.argv.slice(1),
+                    {
+                        cwd: PROJECT_ROOT,
+                        detached: true,
+                        stdio: 'inherit',
+                        env: process.env
+                    }
+                );
+            } catch (error) {
+                return failRestart(
+                    `Failed to start new process: ${error.message}`
+                );
             }
 
             let settled = false;
-            const GRACE_MS = 6000; // long enough for require()/native module loads on slow hosts
 
-            const crashTimer = setTimeout(() => {
+            // Startup verification window
+            const STARTUP_TIMEOUT = 6000;
+
+            const startupTimer = setTimeout(() => {
                 if (settled) return;
 
                 settled = true;
+
                 child.unref();
+
+                // New process survived the startup window.
                 resolve(true);
+
                 process.exit(0);
-            }, GRACE_MS);
+            }, STARTUP_TIMEOUT);
 
             child.once('exit', (code, signal) => {
                 if (settled) return;
 
                 settled = true;
-                clearTimeout(crashTimer);
+                clearTimeout(startupTimer);
 
-                finishFail(
-                    `The new process exited almost immediately (code ${code}, signal ${signal || 'none'}) — ` +
-                    `most likely a syntax error or crash on startup. Check your hosting logs for the exact error.`
+                failRestart(
+                    `New process exited during startup ` +
+                    `(code ${code}, signal ${signal || 'none'}).`
                 );
             });
 
-            child.once('error', (err) => {
+            child.once('error', error => {
                 if (settled) return;
 
                 settled = true;
-                clearTimeout(crashTimer);
+                clearTimeout(startupTimer);
 
-                finishFail(`Failed to spawn new process: ${err.message}`);
+                failRestart(
+                    `Failed to start replacement process: ${error.message}`
+                );
             });
         };
 
@@ -279,46 +427,73 @@ function restartBot({ onFailure } = {}) {
             const server = global.__freezerServer;
 
             if (server && server.listening) {
-                server.close(() => doSpawn());
+                server.close(() => {
+                    spawnReplacement();
+                });
             } else {
-                doSpawn();
+                spawnReplacement();
             }
-        } catch (err) {
-            finishFail(`Restart error: ${err.message}`);
+        } catch (error) {
+            failRestart(
+                `Restart error: ${error.message}`
+            );
         }
     });
 }
 
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║                          UPDATE COMMAND                             ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+
 const { cmd } = require('../arslan');
 
 cmd({
-    pattern: "update",
+    pattern: 'update',
     name: 'update',
     category: 'Owner',
     aliases: ['upgrade', 'patch'],
-    description: 'Owner only — check GitHub and update the bot in place',
+    description:
+        'Owner only — check GitHub and update the bot safely',
     filename: __filename
+
 }, async (sock, m, args) => {
-    // ── Owner-only gate ────────────────────────────────────────────────
+
+    // ── Owner / Developer Protection ──────────────────────────────────
     if (!m.isOwner && !m.isDev) {
-        return m.reply('❌ This command is restricted to the bot owner.');
+        return m.reply(
+            '❌ *ACCESS DENIED*\n\n' +
+            'This command is restricted to the bot owner.'
+        );
     }
 
+    // ── Prevent duplicate updates ─────────────────────────────────────
     if (isUpdateLocked()) {
-        return m.reply('⏳ An update is already running — please wait for it to finish.');
+        return m.reply(
+            '⏳ *UPDATE ALREADY RUNNING*\n\n' +
+            'Please wait for the current update to finish.'
+        );
     }
 
     setUpdateLock(true);
 
-    const loadingMsg = await m.reply('🔍 *Checking for updates...*');
+    // ── Initial status message ─────────────────────────────────────────
+    const loadingMsg = await m.reply(
+        '╭━━━〔 ❄️ *FREEZER MD* 〕━━━╮\n' +
+        '┃ 🔍 Checking for updates...\n' +
+        '╰━━━━━━━━━━━━━━━━━━━━━━━━╯'
+    );
 
-    const editOrSend = async (text) => {
+    // ── Message editor helper ──────────────────────────────────────────
+    const editOrSend = async text => {
         try {
-            await sock.sendMessage(m.from, {
-                text,
-                edit: loadingMsg.key
-            });
-        } catch (err) {
+            await sock.sendMessage(
+                m.from,
+                {
+                    text,
+                    edit: loadingMsg.key
+                }
+            );
+        } catch {
             await sock.sendMessage(
                 m.from,
                 { text },
@@ -327,144 +502,286 @@ cmd({
         }
     };
 
-    let tmpDir = null;
+    let tempDirectory = null;
 
     try {
-        // 1. Check latest commit
-        const latest = await getLatestCommit();
-        const localSha = getLocalCommit();
 
-        if (localSha && localSha === latest.sha) {
+        // ═══════════════════════════════════════════════════════════════
+        // 1. CHECK GITHUB
+        // ═══════════════════════════════════════════════════════════════
+
+        const latest = await getLatestCommit();
+        const localCommit = getLocalCommit();
+
+        // No changes detected
+        if (
+            localCommit &&
+            localCommit === latest.sha
+        ) {
             setUpdateLock(false);
-            return editOrSend('✅ Your bot is already up to date!');
+
+            return editOrSend(
+                '╭━━━〔 ❄️ *FREEZER MD* 〕━━━╮\n' +
+                '┃\n' +
+                '┃ ✅ *BOT IS UP TO DATE*\n' +
+                '┃\n' +
+                '┃ No new updates were found.\n' +
+                '┃\n' +
+                '╰━━━━━━━━━━━━━━━━━━━━━━━━╯'
+            );
         }
 
-        const dateStr = latest.date
+        const formattedDate = latest.date
             ? new Date(latest.date).toLocaleString()
             : 'Unknown';
 
         await editOrSend(
-            `🚀 *UPDATE FOUND!*\n\n` +
-            `📝 *Changes:* ${latest.message || 'No message provided'}\n` +
-            `📅 *Date:* ${dateStr}\n\n` +
-            `📥 Downloading and installing update...`
+            '╭━━━〔 🚀 *UPDATE FOUND* 〕━━━╮\n' +
+            '┃\n' +
+            `┃ 📝 *Commit:* ${latest.message || 'No message'}\n` +
+            `┃ 📅 *Date:* ${formattedDate}\n` +
+            '┃\n' +
+            '┃ 📥 Downloading update...\n' +
+            '┃\n' +
+            '╰━━━━━━━━━━━━━━━━━━━━━━━━╯'
         );
 
-        // 2. Download + extract into a temp dir OUTSIDE the project
-        tmpDir = fs.mkdtempSync(
-            path.join(os.tmpdir(), 'freezer-update-')
+        // ═══════════════════════════════════════════════════════════════
+        // 2. CREATE TEMP DIRECTORY
+        // ═══════════════════════════════════════════════════════════════
+
+        tempDirectory = fs.mkdtempSync(
+            path.join(
+                os.tmpdir(),
+                'freezer-md-update-'
+            )
         );
 
-        const zipPath = path.join(tmpDir, 'update.zip');
-        const extractDir = path.join(tmpDir, 'extracted');
+        const zipPath = path.join(
+            tempDirectory,
+            'update.zip'
+        );
 
-        fs.mkdirSync(extractDir, { recursive: true });
+        const extractionPath = path.join(
+            tempDirectory,
+            'extracted'
+        );
+
+        fs.mkdirSync(
+            extractionPath,
+            { recursive: true }
+        );
+
+        // ═══════════════════════════════════════════════════════════════
+        // 3. DOWNLOAD UPDATE
+        // ═══════════════════════════════════════════════════════════════
 
         await downloadZip(zipPath);
-        const srcRoot = extractZip(zipPath, extractDir);
 
-        // 3. Validate BEFORE touching the real project
-        validateExtractedSource(srcRoot);
-
-        // 4. Detect whether package.json actually changed
-        const oldPkgHash = fileHash(
-            path.join(PROJECT_ROOT, 'package.json')
+        const sourceRoot = extractZip(
+            zipPath,
+            extractionPath
         );
 
-        const newPkgHash = fileHash(
-            path.join(srcRoot, 'package.json')
+        // ═══════════════════════════════════════════════════════════════
+        // 4. VALIDATE UPDATE
+        // ═══════════════════════════════════════════════════════════════
+
+        validateExtractedSource(sourceRoot);
+
+        // ═══════════════════════════════════════════════════════════════
+        // 5. CHECK DEPENDENCY CHANGES
+        // ═══════════════════════════════════════════════════════════════
+
+        const oldPackageHash = fileHash(
+            path.join(
+                PROJECT_ROOT,
+                'package.json'
+            )
         );
 
-        const dependenciesChanged = oldPkgHash !== newPkgHash;
+        const newPackageHash = fileHash(
+            path.join(
+                sourceRoot,
+                'package.json'
+            )
+        );
 
-        // 5. Apply the update in place (protected paths are never touched)
-        await editOrSend('📦 Installing files...');
+        const dependenciesChanged =
+            oldPackageHash !== newPackageHash;
 
-        syncDirectory(srcRoot, PROJECT_ROOT);
+        // ═══════════════════════════════════════════════════════════════
+        // 6. APPLY UPDATE
+        // ═══════════════════════════════════════════════════════════════
 
-        // 6. Install dependencies only if package.json actually changed
+        await editOrSend(
+            '╭━━━〔 📦 *INSTALLING UPDATE* 〕━━━╮\n' +
+            '┃\n' +
+            '┃ 🔄 Updating bot files...\n' +
+            '┃ 🛡️ Protected data will remain untouched.\n' +
+            '┃\n' +
+            '╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯'
+        );
+
+        syncDirectory(
+            sourceRoot,
+            PROJECT_ROOT
+        );
+
+        // ═══════════════════════════════════════════════════════════════
+        // 7. INSTALL DEPENDENCIES IF NEEDED
+        // ═══════════════════════════════════════════════════════════════
+
         if (dependenciesChanged) {
+
             await editOrSend(
-                '🔧 Checking dependencies...\n📦 Installing (this may take a moment)...'
+                '╭━━━〔 🔧 *DEPENDENCIES* 〕━━━╮\n' +
+                '┃\n' +
+                '┃ 📦 package.json changed\n' +
+                '┃ ⚙️ Installing dependencies...\n' +
+                '┃\n' +
+                '┃ ⏳ Please wait...\n' +
+                '┃\n' +
+                '╰━━━━━━━━━━━━━━━━━━━━━━━━━━╯'
             );
 
             try {
-                execSync('npm install --omit=dev', {
-                    cwd: PROJECT_ROOT,
-                    stdio: 'pipe'
-                });
-            } catch (err) {
-                // Files are already updated at this point — report but don't
-                // pretend nothing happened. A manual `npm install` may be needed.
+                execSync(
+                    'npm install --omit=dev',
+                    {
+                        cwd: PROJECT_ROOT,
+                        stdio: 'pipe'
+                    }
+                );
+
+            } catch (error) {
+
                 console.error(
-                    '❌ update.js: npm install failed:',
-                    err.message
+                    '❌ FREEZER UPDATE • npm install failed:',
+                    error.message
                 );
 
                 await editOrSend(
-                    `⚠️ Files were updated, but dependency install failed:\n${err.message}\n\n` +
-                    `Run \`npm install\` manually, then restart the bot.`
+                    '╭━━━〔 ⚠️ *DEPENDENCY ERROR* 〕━━━╮\n' +
+                    '┃\n' +
+                    '┃ Files were updated successfully,\n' +
+                    '┃ but dependency installation failed.\n' +
+                    '┃\n' +
+                    `┃ ❌ ${error.message}\n` +
+                    '┃\n' +
+                    '┃ Run *npm install* manually, then\n' +
+                    '┃ restart the bot.\n' +
+                    '┃\n' +
+                    '╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯'
                 );
 
                 setUpdateLock(false);
+
                 return;
             }
         }
 
-        // 7. Clean up temp files
-        fs.rmSync(tmpDir, {
-            recursive: true,
-            force: true
-        });
+        // ═══════════════════════════════════════════════════════════════
+        // 8. CLEAN TEMP FILES
+        // ═══════════════════════════════════════════════════════════════
 
-        tmpDir = null;
+        fs.rmSync(
+            tempDirectory,
+            {
+                recursive: true,
+                force: true
+            }
+        );
 
-        // 8. Save the new commit hash — only after a successful install
-        saveLocalCommit(latest.sha);
+        tempDirectory = null;
 
-        // 9. Restart — verified: if the new process crashes on startup,
-        // this call returns `false` and the OLD process (this one)
-        // keeps running instead of exiting.
+        // ═══════════════════════════════════════════════════════════════
+        // 9. SAVE COMMIT
+        // ═══════════════════════════════════════════════════════════════
+
+        saveLocalCommit(
+            latest.sha
+        );
+
+        // ═══════════════════════════════════════════════════════════════
+        // 10. RESTART & VERIFY
+        // ═══════════════════════════════════════════════════════════════
+
         await editOrSend(
-            '✅ *Update installed successfully!*\n' +
-            '🔄 Restarting bot (verifying startup)...'
+            '╭━━━〔 🔄 *RESTARTING* 〕━━━╮\n' +
+            '┃\n' +
+            '┃ ✅ Update installed successfully!\n' +
+            '┃\n' +
+            '┃ 🔄 Restarting FREEZER MD...\n' +
+            '┃ 🔍 Verifying startup...\n' +
+            '┃\n' +
+            '╰━━━━━━━━━━━━━━━━━━━━━━━━━━╯'
         );
 
         const restarted = await restartBot({
-            onFailure: async (reason) => {
+
+            onFailure: async reason => {
+
                 console.error(
-                    '❌ update.js: new process failed to start:',
+                    '❌ FREEZER UPDATE • Restart failed:',
                     reason
                 );
 
                 await editOrSend(
-                    `⚠️ Files were updated, but the bot failed to restart cleanly:\n\n${reason}\n\n` +
-                    `The bot is still running on the previous version — nothing is broken. ` +
-                    `Fix the issue, push again, then send *update* once more.`
+                    '╭━━━〔 ⚠️ *RESTART FAILED* 〕━━━╮\n' +
+                    '┃\n' +
+                    '┃ The files were updated, but the\n' +
+                    '┃ new process failed to start cleanly.\n' +
+                    '┃\n' +
+                    `┃ ❌ ${reason}\n` +
+                    '┃\n' +
+                    '┃ 🟢 The current bot process is still\n' +
+                    '┃ running.\n' +
+                    '┃\n' +
+                    '┃ Fix the issue, push the correction,\n' +
+                    '┃ then run *update* again.\n' +
+                    '┃\n' +
+                    '╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯'
                 );
             }
         });
 
-        // If restarted === true, process.exit() already ran inside
-        // restartBot() and this line is never reached.
+        // New process successfully took over.
         if (restarted === false) {
             setUpdateLock(false);
         }
 
-    } catch (err) {
-        console.error('❌ update.js fatal error:', err);
+    } catch (error) {
 
-        if (tmpDir) {
+        console.error(
+            '❌ FREEZER UPDATE • Fatal error:',
+            error
+        );
+
+        // ── Clean temporary files on failure ──────────────────────────
+        if (tempDirectory) {
             try {
-                fs.rmSync(tmpDir, {
-                    recursive: true,
-                    force: true
-                });
+                fs.rmSync(
+                    tempDirectory,
+                    {
+                        recursive: true,
+                        force: true
+                    }
+                );
             } catch (_) {}
         }
 
         await editOrSend(
-            `❌ Update failed, nothing was changed:\n${err.message}`
+            '╭━━━〔 ❌ *UPDATE FAILED* 〕━━━╮\n' +
+            '┃\n' +
+            '┃ The update could not be completed.\n' +
+            '┃\n' +
+            `┃ ⚠️ ${error.message}\n` +
+            '┃\n' +
+            '┃ 🛡️ Your protected files were not\n' +
+            '┃ intentionally modified by the updater.\n' +
+            '┃\n' +
+            '╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯'
         );
 
         setUpdateLock(false);

@@ -1,131 +1,37 @@
 'use strict';
 
-const { sendInteractiveMessage } = require('gifted-btns');
-const process = require('process');
-
 const { cmd } = require('../arslan');
-
-function formatUptime(seconds) {
-    seconds = Math.floor(seconds);
-
-    const days = Math.floor(seconds / 86400);
-    seconds %= 86400;
-
-    const hours = Math.floor(seconds / 3600);
-    seconds %= 3600;
-
-    const minutes = Math.floor(seconds / 60);
-    seconds %= 60;
-
-    const parts = [];
-
-    if (days) parts.push(`${days}d`);
-    if (hours || days) parts.push(`${hours}h`);
-    if (minutes || hours || days) parts.push(`${minutes}m`);
-
-    parts.push(`${seconds}s`);
-
-    return parts.join(' ');
-}
 
 cmd({
     pattern: 'uptime',
     name: 'uptime',
-    category: 'General',
+    description: 'Show bot uptime',
     aliases: ['up'],
-    description: 'Display Freezer-MD system uptime.',
     filename: __filename
 }, async (sock, m) => {
 
-    try {
+    const up = Math.floor(process.uptime());
 
-        // ─────────────────────────────────────────────
-        // SYSTEM INFORMATION
-        // ─────────────────────────────────────────────
+    const d = Math.floor(up / 86400);
+    const h = Math.floor((up % 86400) / 3600);
+    const min = Math.floor((up % 3600) / 60);
+    const s = up % 60;
 
-        const formattedUptime =
-            formatUptime(process.uptime());
+    const uptime = [
+        d && `${d}d`,
+        h && `${h}h`,
+        min && `${min}m`,
+        `${s}s`
+    ].filter(Boolean).join(' ');
 
-        const memory = process.memoryUsage();
+    const text = [
+        '┏▣ ◈ *𝗙𝗥𝗘𝗘𝗭𝗘𝗥 𝗠𝗗* ◈',
+        '┃',
+        `┃│ 🟢 Status  : Online`,
+        `┃│ ⚡ Uptime  : ${uptime}`,
+        '┃',
+        '┗▣'
+    ].join('\n');
 
-        const memoryMB =
-            (memory.rss / 1024 / 1024).toFixed(1);
-
-        const nodeVersion =
-            process.version;
-
-        // ─────────────────────────────────────────────
-        // FREEZER-MD PONG STYLE
-        // ─────────────────────────────────────────────
-
-        const uptimeText =
-`╔══════════════════════════╗
-║   ❄️ ❍ *𝗙𝗥𝗘𝗘𝗭𝗘𝗥-𝗠𝗗* ❍
-╠══════════════════════════╣
-║
-║   🟢 ❍ Status × *Online*
-║   ⏱️ ❍ Uptime × *${formattedUptime}*
-║   🧠 ❍ RAM × *${memoryMB} MB*
-║   🟢 ❍ Node × *${nodeVersion}*
-║
-╠══════════════════════════╣
-║   ⚡ ❍ Engine × *Active*
-║   🛡️ ❍ Security × *Protected*
-║
-╚══════════════════════════╝
-
-❄️ *𝗙𝗔𝗦𝗧 • 𝗦𝗧𝗔𝗕𝗟𝗘 • 𝗣𝗢𝗪𝗘𝗥𝗙𝗨𝗟*
-> *𝗕𝗨𝗜𝗟𝗧 𝗗𝗜𝗙𝗙𝗘𝗥𝗘𝗡𝗧.*`;
-
-        // ─────────────────────────────────────────────
-        // SEND INTERACTIVE MESSAGE
-        // ─────────────────────────────────────────────
-
-        await sendInteractiveMessage(
-            sock,
-            m.from,
-            {
-                title: '❄️ FREEZER-MD • SYSTEM',
-
-                text: uptimeText,
-
-                footer:
-                    '❄️ FREEZER-MD • Built Different',
-
-                interactiveButtons: [
-                    {
-                        name: 'cta_url',
-
-                        buttonParamsJson:
-                            JSON.stringify({
-                                display_text:
-                                    '📢 View Channel',
-
-                                url:
-                                    'https://whatsapp.com/channel/0029Vb87tM1D8SE7qCVjbq3U'
-                            })
-                    }
-                ]
-            }
-        );
-
-    } catch (error) {
-
-        console.error(
-            '[FREEZER-MD] Uptime Error:',
-            error
-        );
-
-        await m.reply(
-`╔══════════════════════════╗
-║   ❌ ❍ *𝗦𝗬𝗦𝗧𝗘𝗠 𝗖𝗛𝗘𝗖𝗞* ❍
-╠══════════════════════════╣
-║
-║   🟢 ❍ Status × *Online*
-║   ⏱️ ❍ Uptime × *${formatUptime(process.uptime())}*
-║   ⚠️ ❍ Check × *Failed*
-║
-╚══════════════════════════╝`
-        );
-    }
+    await m.reply(text);
 });

@@ -1,36 +1,30 @@
+'use strict';
+
 const { cmd } = require('../arslan');
 
 cmd({
-    pattern: "ping",
+    pattern: 'ping',
     name: 'ping',
-    category: 'General',
-    aliases: ['p', 'pong'],
-    description: 'Check bot response time',
+    description: 'Check bot response speed',
+    aliases: ['p'],
     filename: __filename
-}, async (sock, m, args) => {
+}, async (sock, m) => {
+
     const start = Date.now();
-    const sent = await m.reply(
-`┏━━━━━━━━━━━━━━━━━━┓
-┃   🏓 ❍ *PING* ❍
-┣━━━━━━━━━━━━━━━━━━┫
-┃
-┃   ⏳ ❍ Checking...
-┃
-┗━━━━━━━━━━━━━━━━━━┛`
-    );
 
-    const latency = Date.now() - start;
+    await m.reply('🏓 Checking...');
 
-    await sock.sendMessage(m.from, {
-        text: `╔══════════════════╗
-║   🏓 ❍ *PONG* ❍
-╠══════════════════╣
-║
-║   ⚡ ❍ Speed × ${latency}ms
-║   🟢 ❍ Status × Online
-║   🤖 ❍ Bot × Active
-║
-╚══════════════════╝`,
-        edit: sent.key
-    });
+    const speed = Date.now() - start;
+
+    const text = [
+        '┏▣ ◈ *🏓 PONG* ◈',
+        '┃',
+        `┃│ ⚡ Speed  : ${speed}ms`,
+        '┃│ 🟢 Status : Online',
+        '┃│ 🤖 Bot    : Active',
+        '┃',
+        '┗▣'
+    ].join('\n');
+
+    await m.reply(text);
 });

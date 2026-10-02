@@ -12,7 +12,7 @@ cmd({
     filename: __filename
 }, async (sock, m) => {
 
-    const REPO_OWNER = 'iantarachake-create';
+    const REPO_OWNER = 'freezee';
     const REPO_NAME = 'FREEZERMDBOT';
 
     const REPO_URL =

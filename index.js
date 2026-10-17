@@ -13,6 +13,7 @@ const { decodeSessionId } = require('./lib/sessionLoader');
 const { AntideleteHandler } = require('./lib/antidelete');
 const { handleChatbotResponse } = require('./lib/chatbot');
 const { handleLinkDetection } = require('./lib/antilink');
+const admin = require('./lib/adminState');
 const AdmZip = require('adm-zip');
 
 // Optional dependencies — degrade gracefully instead of crashing the whole
@@ -550,6 +551,9 @@ function startBot() {
                     botStatus = 'connected';
                     isConnecting = false;
 
+                    // Load saved mode / sudo / cmdreact / autobio from data/admin-state.json
+                    try { admin.init(sock); } catch (err) { console.error('adminState init error:', err.message); }
+
                     if (!global.owners) global.owners = [];
                     if (!global.owners.includes(sock.user.id)) {
                         global.owners.push(sock.user.id);
@@ -775,6 +779,10 @@ function startBot() {
                 if (!rawMsg.message) return;
 
                 const m = await serializeMessage(sock, rawMsg);
+
+                // Private-mode gate + sudo + cmdreact (lib/adminState.js).
+                // Returns true when a command must be ignored (private mode).
+                if (admin.gate(sock, m, rawMsg)) return;
 
                 // --- Anti-spam: rate-limit non-owner senders ---
                 if (global.antiSpamEnabled && !rawMsg.key.fromMe && m.sender) {

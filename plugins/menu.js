@@ -4,12 +4,21 @@ const fs = require('fs');
 const { cmd } = require('../arslan');
 
 /* =========================================================
-   STYLE (matches the Freezer-MD card)
+   STYLE
 ========================================================= */
-const TOP_BANNER = '✧･ﾟ: ✧･ﾟ: ✦ :･ﾟ✧ :･ﾟ✧';
-const DIVIDER    = '──────────────────';
-const TAGLINE    = 'Beyond Ordinary Automation';
-const FOOTER     = 'A NEW UNIVERSE OF COMMANDS.';
+const LINE_W = '━━━━━━━━━━━━━━━━━━━━━━━━━━';
+const FOOTER = [
+    '*◈ A NEW UNIVERSE OF COMMANDS ◈*',
+    '*© FREEZER-MD 🥶*'
+];
+
+function formatUptime(sec) {
+    const d = Math.floor(sec / 86400);
+    const h = Math.floor((sec % 86400) / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = Math.floor(sec % 60);
+    return [d && `${d}d`, h && `${h}h`, m && `${m}m`, `${s}s`].filter(Boolean).join(' ');
+}
 
 /* =========================================================
    CATEGORY LABELS + ORDER
@@ -21,14 +30,14 @@ const CATEGORIES = [
     ['football',    '⚽', 'FOOTBALL'],
     ['tools',       '🛠️', 'TOOLS'],
     ['downloaders', '📥', 'DOWNLOADERS'],
-    ['ai',          '🤖', 'AI'],
-    ['fun',         '🎮', 'FUN'],
-    ['group',       '👥', 'GROUP'],
+    ['ai',          '🤖', 'AI SYSTEM'],
+    ['fun',         '🎮', 'FUN ZONE'],
+    ['group',       '👥', 'GROUP CONTROL'],
     ['status',      '📡', 'STATUS'],
     ['channel',     '📢', 'CHANNEL'],
-    ['admin',       '👑', 'ADMIN'],
+    ['admin',       '👑', 'ADMIN PANEL'],
     ['security',    '🛡️', 'SECURITY'],
-    ['owner',       '🔐', 'OWNER']
+    ['owner',       '🔐', 'OWNER ACCESS']
 ];
 
 /* =========================================================
@@ -67,7 +76,6 @@ const PINNED = {
 ========================================================= */
 function buildMenu() {
     const prefix = global.BOT_PREFIX || '.';
-    const botName = String(global.BOT_NAME || 'FREEZER-MD').toUpperCase();
     const grouped = {};
     const seen = new Set();
 
@@ -105,21 +113,37 @@ function buildMenu() {
         const pinned = (PINNED[key] || []).filter(n => list.includes(n));
         const rest = list.filter(n => !pinned.includes(n)).sort((a, b) => a.localeCompare(b));
 
-        sections.push(
-            [`〔 ${icon} *${label}* 〕`, ...[...pinned, ...rest].map(n => `➤ ${prefix}${n}`)].join('\n')
-        );
+        sections.push([
+            `┏▣ ◈ ◈ *${icon} ${label}* ◈`,
+            ...[...pinned, ...rest].map(n => `┃➤ ${prefix}${n}`),
+            '┗▣'
+        ].join('\n'));
     }
 
+    const mode = global.botMode === 'private' ? 'PRIVATE' : 'PUBLIC';
+    const dev = String(global.ownerName || 'FREEZER').toUpperCase();
+    const version = String(global.BOT_VERSION || 'V1').toUpperCase();
+
+    const header = [
+        `┏${LINE_W}┓`,
+        '┃   🥶 *FREEZER-MD SYSTEM* 🥶',
+        `┣${LINE_W}┫`,
+        '┃ ◈ Status    : ● ONLINE',
+        `┃ ◈ Mode      : ${mode}`,
+        `┃ ◈ Runtime   : ${formatUptime(process.uptime())}`,
+        `┃ ◈ Prefix    : ${prefix}`,
+        '┃ ◈ Platform  : WHATSAPP',
+        `┃ ◈ Version   : ${version}`,
+        `┃ ◈ Developer : ${dev}`,
+        `┗${LINE_W}┛`
+    ].join('\n');
+
     return [
-        TOP_BANNER,
-        `🌌 *${botName}* 🌌`,
-        `_${TAGLINE}_`,
-        DIVIDER,
+        header,
         '',
         sections.length ? sections.join('\n\n') : '📭 No commands loaded',
         '',
-        DIVIDER,
-        `_${FOOTER}_`
+        ...FOOTER
     ].join('\n');
 }
 

@@ -6,7 +6,7 @@ const { cmd } = require('../arslan');
 /* =========================================================
    STYLE
 ========================================================= */
-const LINE_W = '━━━━━━━━━━━━━━━━━━━━━';
+const LINE_W = '━━━━━━━━━━━━━━━━━━━━━━';
 const FOOTER = [
     '*◈ A NEW UNIVERSE OF COMMANDS ◈*',
     '*© FREEZER-MD 🥶*'
@@ -18,6 +18,27 @@ function formatUptime(sec) {
     const m = Math.floor((sec % 3600) / 60);
     const s = Math.floor(sec % 60);
     return [d && `${d}d`, h && `${h}h`, m && `${m}m`, `${s}s`].filter(Boolean).join(' ');
+}
+
+function getTimeInfo() {
+    const tz = global.timezone || undefined;
+    const now = new Date();
+    const hour = Number(new Intl.DateTimeFormat('en-GB', {
+        hour: 'numeric', hourCycle: 'h23', timeZone: tz
+    }).format(now));
+
+    const greeting =
+        hour >= 5  && hour < 12 ? '🌅 Good Morning' :
+        hour >= 12 && hour < 17 ? '☀️ Good Afternoon' :
+        hour >= 17 && hour < 21 ? '🌆 Good Evening' :
+                                  '🌙 Good Night';
+
+    const time = now.toLocaleString('en-GB', {
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', hour12: true, timeZone: tz
+    }).replace(/am|pm/i, s => s.toUpperCase());
+
+    return { greeting, time };
 }
 
 /* =========================================================
@@ -125,19 +146,28 @@ function buildMenu() {
     const version = String(global.BOT_VERSION || 'V1').toUpperCase();
     const totalPlugins = (global.commands || []).length || seen.size;
 
+    const { greeting, time } = getTimeInfo();
+    const ownerShown = String(global.ownerName || 'Freezer');
+    const ram = (process.memoryUsage().rss / 1024 / 1024).toFixed(1);
+
     const header = [
-        `┏${LINE_W}┓`,
-        '┃   🥶 *FREEZER-MD SYSTEM* 🥶',
-        `┣${LINE_W}┫`,
-        '┃ ◈ Status    : ● ONLINE',
-        `┃ ◈ Mode      : ${mode}`,
-        `┃ ◈ Runtime   : ${formatUptime(process.uptime())}`,
-        `┃ ◈ Prefix    : ${prefix}`,
-        `┃ ◈ Plugins   : ${totalPlugins}`,
-        '┃ ◈ Platform  : WHATSAPP',
-        `┃ ◈ Version   : ${version}`,
-        `┃ ◈ Developer : ${dev}`,
-        `┗${LINE_W}┛`
+        '┏▣ ◈ *𝗙𝗥𝗘𝗘𝗭𝗘𝗥 𝗠𝗗* ◈',
+        '┃',
+        `┃│ ${greeting}, *${ownerShown}🥶* ★`,
+        '┃',
+        '┃┌─ *STATUS OVERVIEW* ───',
+        `┃│ 🕒 Time      : ${time}`,
+        '┃│ 🟢 Status    : Online & Ready',
+        `┃│ ⚡ Prefix    : ${prefix}`,
+        `┃│ 👑 Owner     : 🥶 ${ownerShown} 🥶`,
+        `┃│ 🧩 Plugins   : ${totalPlugins}`,
+        `┃│ ⚡ Uptime    : ${formatUptime(process.uptime())}`,
+        `┃│ 📊 RAM       : ${ram} MB`,
+        '┃└─────────────',
+        '┃',
+        '┃📌 FREEZER-MD • Command Center',
+        '┃',
+        '┗▣'
     ].join('\n');
 
     return [

@@ -6,7 +6,7 @@ const { cmd } = require('../arslan');
 /* =========================================================
    STYLE
 ========================================================= */
-const LINE_W = '━━━━━━━━━━━━━━━━━━━━━━━━━━';
+const LINE_W = '━━━━━━━━━━━━━━━━━━━━━';
 const FOOTER = [
     '*◈ A NEW UNIVERSE OF COMMANDS ◈*',
     '*© FREEZER-MD 🥶*'
@@ -123,6 +123,7 @@ function buildMenu() {
     const mode = global.botMode === 'private' ? 'PRIVATE' : 'PUBLIC';
     const dev = String(global.ownerName || 'FREEZER').toUpperCase();
     const version = String(global.BOT_VERSION || 'V1').toUpperCase();
+    const totalPlugins = (global.commands || []).length || seen.size;
 
     const header = [
         `┏${LINE_W}┓`,
@@ -132,6 +133,7 @@ function buildMenu() {
         `┃ ◈ Mode      : ${mode}`,
         `┃ ◈ Runtime   : ${formatUptime(process.uptime())}`,
         `┃ ◈ Prefix    : ${prefix}`,
+        `┃ ◈ Plugins   : ${totalPlugins}`,
         '┃ ◈ Platform  : WHATSAPP',
         `┃ ◈ Version   : ${version}`,
         `┃ ◈ Developer : ${dev}`,

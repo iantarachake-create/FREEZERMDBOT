@@ -6,7 +6,7 @@ const { cmd } = require('../arslan');
 /* =========================================================
    STYLE
 ========================================================= */
-const LINE_W = '━━━━━━━━━━━━━━━━━━━━━━';
+const LINE_W = '━━━━━━━━━━━━━━━━━━━━━━━━━━';
 const FOOTER = [
     '*◈ A NEW UNIVERSE OF COMMANDS ◈*',
     '*© FREEZER-MD 🥶*'
@@ -144,7 +144,7 @@ function buildMenu() {
     const mode = global.botMode === 'private' ? 'PRIVATE' : 'PUBLIC';
     const dev = String(global.ownerName || 'FREEZER').toUpperCase();
     const version = String(global.BOT_VERSION || 'V1').toUpperCase();
-    const totalPlugins = (global.commands || []).length || seen.size;
+    const totalCommands = seen.size;
 
     const { greeting, time } = getTimeInfo();
     const ownerShown = String(global.ownerName || 'Freezer');
@@ -160,7 +160,7 @@ function buildMenu() {
         '┃│ 🟢 Status    : Online & Ready',
         `┃│ ⚡ Prefix    : ${prefix}`,
         `┃│ 👑 Owner     : 🥶 ${ownerShown} 🥶`,
-        `┃│ 🧩 Plugins   : ${totalPlugins}`,
+        `┃│ 🧩 Commands  : ${totalCommands}`,
         `┃│ ⚡ Uptime    : ${formatUptime(process.uptime())}`,
         `┃│ 📊 RAM       : ${ram} MB`,
         '┃└─────────────',

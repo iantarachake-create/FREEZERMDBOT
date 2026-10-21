@@ -1,38 +1,50 @@
-'use strict';
-
 const { cmd } = require('../arslan');
-const { box } = require('../lib/groupTools');
+const { makeBox } = require('../freezer-ui');
+
+const box = makeBox('Poll Center');
 
 cmd({
     pattern: 'poll',
     name: 'poll',
     category: 'Group',
-    description: 'Create a poll',
-    aliases: ['vote'],
+    aliases: ['createpoll', 'vote'],
+    description: 'Create a WhatsApp poll',
     filename: __filename
 }, async (sock, m, args) => {
-    const p = global.BOT_PREFIX || '.';
-    let multi = false;
-    const raw = args.join(' ').replace(/--multi\b/i, () => { multi = true; return ''; }).trim();
-    const parts = (raw.includes('|') ? raw.split('|') : raw.split(','))
-        .map(s => s.trim()).filter(Boolean);
+    const prefix = global.BOT_PREFIX || '.';
+    let raw = (args || []).join(' ').trim();
 
-    if (parts.length < 3) {
-        return m.reply(box('POLL', [
-            '❌ Need a question and 2+ options.',
+    // "-m" at the start lets people pick more than one option
+    let multi = false;
+    if (/^-m\s/i.test(raw)) { multi = true; raw = raw.replace(/^-m\s+/i, ''); }
+
+    const parts = raw.split('|').map(s => s.trim()).filter(Boolean);
+    const question = parts.shift();
+    const options = [...new Set(parts)];
+
+    if (!question || options.length < 2) {
+        return m.reply(box(
+            '📊 *𝗖𝗥𝗘𝗔𝗧𝗘 𝗣𝗢𝗟𝗟*',
+            `➤ ${prefix}poll Question | Option 1 | Option 2`,
+            `➤ ${prefix}poll -m Question | A | B | C  (multi choice)`,
             '',
-            `★ ${p}poll Best team? | Arsenal | Chelsea | Spurs`,
-            `★ ${p}poll Lunch?, Pizza, Burger --multi`,
-            '',
-            '--multi lets people pick many options'
-        ]));
+            '➤ 2 to 12 options.'
+        ));
+    }
+    if (options.length > 12) {
+        return m.reply(box('❌ *𝗧𝗢𝗢 𝗠𝗔𝗡𝗬 𝗢𝗣𝗧𝗜𝗢𝗡𝗦*', '➤ Maximum is 12 options.'));
     }
 
-    const name = parts[0].slice(0, 250);
-    const values = [...new Set(parts.slice(1).map(v => v.slice(0, 90)))].slice(0, 12);
-    if (values.length < 2) return m.reply(box('POLL', ['❌ Give at least 2 different options.']));
-
-    await sock.sendMessage(m.from, {
-        poll: { name, values, selectableCount: multi ? values.length : 1 }
-    });
+    try {
+        await sock.sendMessage(m.from, {
+            poll: {
+                name: question.slice(0, 255),
+                values: options.map(o => o.slice(0, 100)),
+                selectableCount: multi ? options.length : 1
+            }
+        });
+    } catch (err) {
+        console.error('[POLL] Error:', err.message);
+        await m.reply(box('❌ *𝗣𝗢𝗟𝗟 𝗘𝗥𝗥𝗢𝗥*', `➤ ${err.message}`));
+    }
 });

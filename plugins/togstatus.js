@@ -1,85 +1,81 @@
-'use strict';
-
-const {
-    prepareWAMessageMedia,
-    generateWAMessageFromContent,
-    proto
-} = require('@whiskeysockets/baileys');
-
+const crypto = require('crypto');
 const { cmd } = require('../arslan');
-const { box, guard } = require('../lib/groupTools');
+const {
+    makeBox, isGroup, isOwner, isAdmin, getMedia, quotedText, loadBaileys, toOpus, extOf
+} = require('../freezer-ui');
 
-const COLORS = {
-    green: 0xFF25D366, red: 0xFFFF0000, blue: 0xFF0000FF, yellow: 0xFFFFFF00,
-    purple: 0xFF800080, black: 0xFF000000, white: 0xFFFFFFFF, orange: 0xFFFFA500
-};
+const box = makeBox('Group Center');
+
+/* Posts to the GROUP STATUS (the status shown inside a group).
+   Needs a baileys build that has generateWAMessageContent / generateWAMessageFromContent
+   and WhatsApp's groupStatusMessageV2 support.                                         */
+async function postGroupStatus(sock, jid, content) {
+    const baileys = loadBaileys();
+    if (!baileys?.generateWAMessageContent || !baileys?.generateWAMessageFromContent) {
+        throw new Error('Your baileys build cannot post group status');
+    }
+    const inside = await baileys.generateWAMessageContent(content, { upload: sock.waUploadToServer });
+    const msg = baileys.generateWAMessageFromContent(jid, {
+        messageContextInfo: { messageSecret: crypto.randomBytes(32) },
+        groupStatusMessageV2: { message: inside }
+    }, { userJid: sock.user.id });
+    await sock.relayMessage(jid, msg.message, { messageId: msg.key.id });
+}
 
 cmd({
     pattern: 'togstatus',
     name: 'togstatus',
-    category: 'Status',
-    description: 'Post a group status (text, image, video or audio)',
-    aliases: ['tgs', 'gstat'],
+    category: 'Group',
+    aliases: ['groupstatus', 'gstatus', 'swgc'],
+    description: 'Post an image, video, voice note or text to the group status',
     filename: __filename
 }, async (sock, m, args) => {
-    const meta = await guard(sock, m, { needBotAdmin: false });
-    if (!meta) return;
+    const prefix = global.BOT_PREFIX || '.';
 
-    const p = global.BOT_PREFIX || '.';
-    let text = args.join(' ').trim();
-    let color = COLORS.green;
-
-    // optional "| color" at the end
-    const cm = text.match(/\|\s*([a-z]+)\s*$/i);
-    if (cm && COLORS[cm[1].toLowerCase()]) {
-        color = COLORS[cm[1].toLowerCase()];
-        text = text.slice(0, cm.index).trim();
+    if (!isGroup(m)) {
+        return m.reply(box('❌ *𝗚𝗥𝗢𝗨𝗣 𝗢𝗡𝗟𝗬*', '➤ Use this command in a group.'));
+    }
+    if (!(isOwner(m) || await isAdmin(sock, m))) {
+        return m.reply(box('❌ *𝗔𝗗𝗠𝗜𝗡𝗦 𝗢𝗡𝗟𝗬*', '➤ Only group admins can use this.'));
     }
 
-    const q = m.quoted;
-    const qm = q?.message || {};
-    const upload = { upload: sock.waUploadToServer };
-    let inner;
+    const typed = (args || []).join(' ').trim();
 
     try {
-        if (qm.imageMessage) {
-            const media = await prepareWAMessageMedia(
-                { image: await q.download(), caption: text || qm.imageMessage.caption || '' }, upload);
-            inner = { imageMessage: media.imageMessage };
-        } else if (qm.videoMessage) {
-            const media = await prepareWAMessageMedia(
-                { video: await q.download(), caption: text || qm.videoMessage.caption || '' }, upload);
-            inner = { videoMessage: media.videoMessage };
-        } else if (qm.audioMessage) {
-            const media = await prepareWAMessageMedia(
-                { audio: await q.download(), mimetype: qm.audioMessage.mimetype || 'audio/mp4', ptt: !!qm.audioMessage.ptt }, upload);
-            inner = { audioMessage: media.audioMessage };
-        } else {
-            if (!text && q?.body) text = q.body;
-            if (!text) {
-                return m.reply(box('GROUP STATUS', [
-                    '❌ Nothing to post.',
-                    '',
-                    `★ ${p}togstatus Hello group!`,
-                    `★ ${p}togstatus Hello | blue`,
-                    '★ Reply to an image / video / audio',
-                    '',
-                    'Colors: green red blue yellow',
-                    'purple black white orange'
-                ]));
+        const media = await getMedia(sock, m, ['image', 'video', 'audio']);
+        let content;
+
+        if (media) {
+            const caption = typed || quotedText(m);
+            if (media.kind === 'image') {
+                content = { image: media.buffer, caption };
+            } else if (media.kind === 'video') {
+                content = { video: media.buffer, caption, mimetype: 'video/mp4' };
+            } else {
+                let audio = media.buffer;
+                try { audio = await toOpus(media.buffer, extOf(media.mime)); } catch (_) { /* send as is */ }
+                content = { audio, mimetype: 'audio/ogg; codecs=opus', ptt: true };
             }
-            inner = { extendedTextMessage: { text, backgroundArgb: color, font: 1 } };
+        } else {
+            const text = typed || quotedText(m);
+            if (!text) {
+                return m.reply(box(
+                    '📡 *𝗚𝗥𝗢𝗨𝗣 𝗦𝗧𝗔𝗧𝗨𝗦*',
+                    '➤ Reply to an image, video or voice note.',
+                    `➤ Or: ${prefix}togstatus your text here`,
+                    '',
+                    '➤ Add a caption by typing it after the command.'
+                ));
+            }
+            content = { text };
         }
 
-        const msg = generateWAMessageFromContent(
-            m.from,
-            proto.Message.fromObject({ groupStatusMessageV2: { message: inner } }),
-            { userJid: sock.user.id }
-        );
-        await sock.relayMessage(m.from, msg.message, { messageId: msg.key.id });
-        await m.react('✅').catch(() => {});
+        await m.react('📡');
+        await postGroupStatus(sock, m.from, content);
+        await m.react('✅');
     } catch (err) {
-        console.error('[FREEZER-MD] togstatus error:', err);
-        await m.reply(box('GROUP STATUS', [`❌ Failed: ${err.message}`]));
+        console.error('[TOGSTATUS] Error:', err.message);
+        await m.react('❌').catch(() => {});
+        await m.reply(box('❌ *𝗦𝗧𝗔𝗧𝗨𝗦 𝗘𝗥𝗥𝗢𝗥*', `➤ ${err.message}`));
     }
 });

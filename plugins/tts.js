@@ -1,81 +1,87 @@
-'use strict';
-
 const axios = require('axios');
 const { cmd } = require('../arslan');
-const { box } = require('../lib/groupTools');
+const { makeBox, UA, toOpus, quotedText } = require('../freezer-ui');
 
-const LANGS = new Set([
-    'en', 'sw', 'fr', 'es', 'de', 'it', 'pt', 'ar', 'hi', 'ja', 'ko', 'zh-cn', 'ru', 'tr', 'id',
-    'nl', 'pl', 'am', 'so', 'zu', 'af', 'th', 'vi', 'bn', 'ur', 'ne', 'fil', 'sv', 'el', 'cs',
-    'ro', 'hu', 'uk', 'fi', 'da', 'no'
-]);
+const box = makeBox('Voice Center');
+const MAX_CHARS = 600;
+const CHUNK = 180;
 
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36';
-
-// Google TTS accepts ~200 characters per request, so split on sentence/word boundaries
-function chunk(text, max = 180) {
-    const parts = [];
-    let rest = text.replace(/\s+/g, ' ').trim();
-    while (rest.length > max) {
-        let cut = Math.max(rest.lastIndexOf('. ', max), rest.lastIndexOf('! ', max), rest.lastIndexOf('? ', max), rest.lastIndexOf(', ', max));
-        if (cut < max * 0.4) cut = rest.lastIndexOf(' ', max);
-        if (cut <= 0) cut = max;
-        parts.push(rest.slice(0, cut + 1).trim());
-        rest = rest.slice(cut + 1).trim();
+// split on spaces so no word is cut, each piece <= CHUNK chars
+function chunkText(text) {
+    const out = [];
+    let cur = '';
+    for (const word of text.split(/\s+/)) {
+        if ((cur + ' ' + word).trim().length > CHUNK) {
+            if (cur) out.push(cur);
+            cur = word.slice(0, CHUNK);
+        } else {
+            cur = (cur + ' ' + word).trim();
+        }
     }
-    if (rest) parts.push(rest);
-    return parts;
+    if (cur) out.push(cur);
+    return out;
+}
+
+async function speak(piece, lang) {
+    const res = await axios.get('https://translate.google.com/translate_tts', {
+        params: { ie: 'UTF-8', q: piece, tl: lang, client: 'tw-ob' },
+        headers: { 'User-Agent': UA },
+        responseType: 'arraybuffer',
+        timeout: 30000
+    });
+    return Buffer.from(res.data);
 }
 
 cmd({
     pattern: 'tts',
     name: 'tts',
     category: 'Tools',
-    description: 'Convert text to speech',
     aliases: ['say', 'speak', 'texttospeech'],
+    description: 'Turn text into a voice note',
     filename: __filename
 }, async (sock, m, args) => {
-    const p = global.BOT_PREFIX || '.';
-    let lang = 'en';
-    const list = [...args];
+    const prefix = global.BOT_PREFIX || '.';
+    const list = [...(args || [])];
 
-    if (list.length && LANGS.has(list[0].toLowerCase())) lang = list.shift().toLowerCase();
-    let text = list.join(' ').trim();
-    if (!text && m.quoted?.body) text = m.quoted.body.trim();
+    // language is picked with a dash:  .tts -es hola amigo
+    let lang = global.ttsLang || 'en';
+    const flag = /^-([a-z]{2}(?:-[a-zA-Z]{2})?)$/.exec(list[0] || '');
+    if (flag) { lang = flag[1]; list.shift(); }
+
+    const text = list.join(' ').trim() || quotedText(m);
 
     if (!text) {
-        return m.reply(box('TTS', [
-            '🗣️ Text to speech',
+        return m.reply(box(
+            '🗣️ *𝗧𝗘𝗫𝗧 𝗧𝗢 𝗦𝗣𝗘𝗘𝗖𝗛*',
+            `➤ ${prefix}tts hello how are you`,
+            `➤ ${prefix}tts -es hola amigo  (language)`,
+            `➤ ${prefix}tts -fr bonjour`,
             '',
-            `★ ${p}tts Hello everyone`,
-            `★ ${p}tts sw Karibuni wote`,
-            `★ Reply to a text with ${p}tts`,
-            '',
-            'Languages: en sw fr es de it pt ar',
-            'hi ja ko zh-cn ru tr id nl pl am so zu...'
-        ]));
+            '➤ Or reply to a text message.',
+            `➤ Default language: ${lang}`
+        ));
     }
-    if (text.length > 800) return m.reply(box('TTS', ['❌ Max 800 characters.']));
-
-    await m.react('⌛').catch(() => {});
+    if (text.length > MAX_CHARS) {
+        return m.reply(box('❌ *𝗧𝗘𝗫𝗧 𝗧𝗢𝗢 𝗟𝗢𝗡𝗚*', `➤ Max ${MAX_CHARS} characters.`));
+    }
 
     try {
-        const tl = lang === 'zh-cn' ? 'zh-CN' : lang;
-        const buffers = [];
-        for (const q of chunk(text)) {
-            const res = await axios.get('https://translate.google.com/translate_tts', {
-                params: { ie: 'UTF-8', q, tl, client: 'tw-ob', total: 1, idx: 0, textlen: q.length },
-                headers: { 'User-Agent': UA, Referer: 'https://translate.google.com/' },
-                responseType: 'arraybuffer',
-                timeout: 20000
-            });
-            buffers.push(Buffer.from(res.data));
+        await m.react('🗣️');
+        const parts = [];
+        for (const piece of chunkText(text)) parts.push(await speak(piece, lang));
+        const mp3 = Buffer.concat(parts);
+
+        try {
+            const ogg = await toOpus(mp3, 'mp3');
+            await m.reply({ audio: ogg, mimetype: 'audio/ogg; codecs=opus', ptt: true });
+        } catch (convErr) {
+            console.error('[TTS] Opus conversion failed, sending mp3:', convErr.message);
+            await m.reply({ audio: mp3, mimetype: 'audio/mpeg', ptt: true });
         }
-        await sock.sendMessage(m.from, { audio: Buffer.concat(buffers), mimetype: 'audio/mpeg', ptt: false });
-        await m.react('✅').catch(() => {});
+        await m.react('✅');
     } catch (err) {
-        console.error('[FREEZER-MD] tts error:', err);
+        console.error('[TTS] Error:', err.message);
         await m.react('❌').catch(() => {});
-        await m.reply(box('TTS', [`❌ Failed: ${err.message}`]));
+        await m.reply(box('❌ *𝗧𝗧𝗦 𝗘𝗥𝗥𝗢𝗥*', `➤ ${err.message}`, '➤ Check the language code and try again.'));
     }
 });

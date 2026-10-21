@@ -1,94 +1,78 @@
-'use strict';
-
 const axios = require('axios');
-const sharp = require('sharp');
 const { cmd } = require('../arslan');
-const { box } = require('../lib/groupTools');
+const { makeBox, getMedia, convert, extOf, sizeText } = require('../freezer-ui');
 
-// Uses OCR.space. Set OCR_API_KEY in your env for higher limits
-// (the public "helloworld" key works but is heavily rate-limited).
-const KEY = process.env.OCR_API_KEY || 'helloworld';
+const box = makeBox('Vision Center');
 
-async function shrink(buffer) {
-    let quality = 80;
-    let out = buffer;
-    for (let i = 0; i < 4; i++) {
-        out = await sharp(buffer).rotate()
-            .resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true })
-            .jpeg({ quality }).toBuffer();
-        if (out.length < 1000 * 1024) break;
-        quality -= 15;
+// OCR.space. Free public key works but is rate limited; set global.ocrKey for your own.
+const OCR_API = 'https://api.ocr.space/parse/image';
+const FREE_LIMIT = 1000 * 1000; // free keys accept files up to ~1MB
+
+// shrink to a jpeg under the free size limit
+async function prepare(buffer, ext) {
+    for (const [w, q] of [[1800, 5], [1400, 10], [1000, 16]]) {
+        const jpg = await convert(buffer, ext, 'jpg', ['-vf', `scale='min(${w},iw)':-2`, '-q:v', String(q), '-frames:v', '1']);
+        if (jpg.length <= FREE_LIMIT) return jpg;
     }
-    return out;
-}
-
-async function recognise(b64, lang, engine) {
-    const form = new URLSearchParams();
-    form.append('base64Image', `data:image/jpeg;base64,${b64}`);
-    form.append('language', lang);
-    form.append('OCREngine', String(engine));
-    form.append('scale', 'true');
-    form.append('detectOrientation', 'true');
-    const { data } = await axios.post('https://api.ocr.space/parse/image', form.toString(), {
-        headers: { apikey: KEY, 'Content-Type': 'application/x-www-form-urlencoded' },
-        timeout: 60000, maxBodyLength: Infinity
-    });
-    if (data?.IsErroredOnProcessing) {
-        const e = Array.isArray(data.ErrorMessage) ? data.ErrorMessage.join(' ') : data.ErrorMessage;
-        throw new Error(e || 'OCR failed');
-    }
-    return (data?.ParsedResults || []).map(r => r.ParsedText || '').join('\n').trim();
+    throw new Error('Image is too large to read, send a smaller one');
 }
 
 cmd({
     pattern: 'ocr',
     name: 'ocr',
     category: 'Tools',
+    aliases: ['ocr.all', 'ocrall', 'imgtext', 'totext', 'readtext'],
     description: 'Extract text from an image',
-    aliases: ['readtext', 'imgtext'],
     filename: __filename
 }, async (sock, m, args) => {
-    const p = global.BOT_PREFIX || '.';
-    const kind = m.isMedia ? m.mediaType : m.quoted?.mediaType;
-
-    if (kind !== 'image') {
-        return m.reply(box('OCR', [
-            '🔤 Read text from a picture',
-            '',
-            '★ Reply to an image with',
-            `   ${p}ocr`,
-            `★ ${p}ocr fre   (other language)`,
-            '',
-            'Codes: eng fre ger spa por ita',
-            'rus ara tur kor jpn chs'
-        ]));
-    }
-
-    await m.react('⌛').catch(() => {});
+    const prefix = global.BOT_PREFIX || '.';
+    // optional 3-letter language, e.g.  .ocr ara   (default eng)
+    const lang = /^[a-z]{3}$/i.test(args?.[0] || '') ? args[0].toLowerCase() : 'eng';
 
     try {
-        const raw = await m.download();
-        if (!raw) throw new Error('Could not download the image');
-        const b64 = (await shrink(raw)).toString('base64');
-
-        const lang = (args[0] || '').toLowerCase();
-        let text;
-        if (lang) {
-            text = await recognise(b64, lang, 1);
-        } else {
-            try { text = await recognise(b64, 'eng', 2); }
-            catch { text = await recognise(b64, 'eng', 1); }
+        const media = await getMedia(sock, m, ['image', 'sticker']);
+        if (!media) {
+            return m.reply(box(
+                '🔍 *𝗢𝗖𝗥*',
+                '➤ Reply to an image that contains text.',
+                '',
+                `➤ ${prefix}ocr`,
+                `➤ ${prefix}ocr ara   (language code, default eng)`
+            ));
         }
 
+        await m.react('🔍');
+        const jpg = await prepare(media.buffer, extOf(media.mime));
+
+        const body = new URLSearchParams({
+            apikey: global.ocrKey || process.env.OCR_KEY || 'helloworld',
+            language: lang,
+            isOverlayRequired: 'false',
+            OCREngine: '2',
+            base64Image: `data:image/jpeg;base64,${jpg.toString('base64')}`
+        });
+
+        const { data } = await axios.post(OCR_API, body.toString(), {
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            timeout: 60000
+        });
+
+        if (data?.IsErroredOnProcessing) {
+            const msg = Array.isArray(data.ErrorMessage) ? data.ErrorMessage.join(', ') : data.ErrorMessage;
+            throw new Error(msg || 'OCR service error');
+        }
+
+        const text = (data?.ParsedResults || []).map(r => r.ParsedText || '').join('\n').trim();
         if (!text) {
-            await m.react('❌').catch(() => {});
-            return m.reply(box('OCR', ['❌ No text found in this image.']));
+            await m.react('❌');
+            return m.reply(box('❌ *𝗡𝗢 𝗧𝗘𝗫𝗧*', '➤ No readable text found in this image.'));
         }
-        await m.reply(box('OCR', ['✅ Extracted text', '']) + '\n\n' + text);
-        await m.react('✅').catch(() => {});
+
+        await m.reply(box('🔍 *𝗘𝗫𝗧𝗥𝗔𝗖𝗧𝗘𝗗 𝗧𝗘𝗫𝗧*', ...text.split(/\r?\n/).map(l => l.trimEnd())));
+        await m.react('✅');
     } catch (err) {
-        console.error('[FREEZER-MD] ocr error:', err);
+        console.error('[OCR] Error:', err.message);
         await m.react('❌').catch(() => {});
-        await m.reply(box('OCR', [`❌ Failed: ${err.message}`]));
+        await m.reply(box('❌ *𝗢𝗖𝗥 𝗘𝗥𝗥𝗢𝗥*', `➤ ${err.message}`));
     }
 });

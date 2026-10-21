@@ -1,150 +1,65 @@
-'use strict';
-
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
-const zlib = require('zlib');
-const pino = require('pino');
-const {
-    default: makeWASocket,
-    useMultiFileAuthState,
-    makeCacheableSignalKeyStore,
-    fetchLatestWaWebVersion,
-    Browsers,
-    delay
-} = require('@whiskeysockets/baileys');
-
+const axios = require('axios');
 const { cmd } = require('../arslan');
-const { box } = require('../lib/groupTools');
+const { makeBox, digits } = require('../freezer-ui');
 
-// .pair 2547XXXXXXXX
-//   1. asks WhatsApp for an 8-character pairing code for that number
-//   2. the number's owner types it in  WhatsApp > Linked devices > Link with phone number
-//   3. when linked, a FREEZER~ SESSION_ID is sent to the person who ran the command (in DM)
-//
-// Set to true only if you want everyone to be able to use it.
-// Keep it false: a session ID gives full access to a WhatsApp account.
-const PUBLIC_PAIR = false;
-const TIMEOUT_MS = 3 * 60 * 1000;
-const RESTART_REQUIRED = 515;
-const active = new Set();
+const box = makeBox('Pairing Center');
+const COOLDOWN = 60 * 1000;
+const lastUse = new Map();
 
+/* Set your pairing server in config:  global.pairApi = 'https://your-pair-site/code'
+   It is called as  GET <pairApi>?number=<digits>  and must answer with JSON
+   containing  code  (or data.code / pairingCode).                              */
 cmd({
     pattern: 'pair',
     name: 'pair',
-    category: 'Owner',
-    description: 'Get a pairing code + SESSION_ID for a WhatsApp number',
-    aliases: ['paircode', 'getsession'],
+    category: 'Tools',
+    aliases: ['paircode', 'getcode'],
+    description: 'Get a WhatsApp pairing code for a number',
     filename: __filename
 }, async (sock, m, args) => {
-    const p = global.BOT_PREFIX || '.';
+    const prefix = global.BOT_PREFIX || '.';
+    const number = digits((args || []).join(''));
 
-    if (!PUBLIC_PAIR && !(m.isOwner || m.isDev)) {
-        return m.reply(box('PAIR', ['❌ Owner only.']));
-    }
-
-    const number = args.join('').replace(/\D/g, '');
-    if (number.length < 8 || number.length > 15) {
-        return m.reply(box('PAIR', [
-            '🔗 Link a WhatsApp number',
+    if (number.length < 7 || number.length > 15) {
+        return m.reply(box(
+            '🔗 *𝗣𝗔𝗜𝗥 𝗖𝗢𝗗𝗘*',
+            '➤ Enter your number with country code.',
             '',
-            `★ ${p}pair 2547XXXXXXXX`,
-            '',
-            'Use the full number with country',
-            'code, no + or spaces.'
-        ]));
+            `➤ Example: ${prefix}pair 2349012345678`
+        ));
     }
-    if (active.has(number)) {
-        return m.reply(box('PAIR', ['⏳ A pairing for this number is already running.']));
+
+    const base = global.pairApi || process.env.PAIR_API;
+    if (!base) {
+        return m.reply(box('❌ *𝗡𝗢𝗧 𝗖𝗢𝗡𝗙𝗜𝗚𝗨𝗥𝗘𝗗*', '➤ Owner must set global.pairApi first.'));
     }
-    active.add(number);
 
-    const requester = String(m.sender || '').replace(/:\d+@/, '@');
-    const logger = pino({ level: 'silent' });
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'freezer-pair-'));
-    let cur = null;
-    let finished = false;
-    let timer = null;
-
-    const finish = async lines => {
-        if (finished) return;
-        finished = true;
-        clearTimeout(timer);
-        try { cur?.end(undefined); } catch {}
-        try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
-        active.delete(number);
-        if (lines) await m.reply(box('PAIR', lines)).catch(() => {});
-    };
-
-    const connect = async first => {
-        const { state, saveCreds } = await useMultiFileAuthState(dir);
-        let version;
-        try { version = (await fetchLatestWaWebVersion()).version; } catch {}
-
-        const s = makeWASocket({
-            ...(version ? { version } : {}),
-            logger,
-            auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, logger) },
-            printQRInTerminal: false,
-            browser: Browsers.macOS('Safari'),
-            markOnlineOnConnect: false,
-            syncFullHistory: false
-        });
-        cur = s;
-        s.ev.on('creds.update', saveCreds);
-
-        s.ev.on('connection.update', async ({ connection, lastDisconnect }) => {
-            if (finished || s !== cur) return;
-
-            if (connection === 'open') {
-                await delay(5000); // let creds.json finish writing
-                try {
-                    const creds = fs.readFileSync(path.join(dir, 'creds.json'));
-                    const session = 'FREEZER~' + zlib.gzipSync(creds).toString('base64');
-                    await sock.sendMessage(requester, {
-                        text: box('PAIR SUCCESS', [
-                            `✅ ${number} linked`,
-                            '',
-                            '🔐 SESSION_ID (keep it secret):'
-                        ])
-                    });
-                    await sock.sendMessage(requester, { text: session });
-                    await finish(['✅ Paired successfully!', '📩 SESSION_ID sent to your DM.']);
-                } catch (err) {
-                    await finish([`❌ Could not read session: ${err.message}`]);
-                }
-            } else if (connection === 'close') {
-                const status = lastDisconnect?.error?.output?.statusCode;
-                if (status === RESTART_REQUIRED) {
-                    try { await connect(false); }
-                    catch (err) { await finish([`❌ ${err.message}`]); }
-                } else {
-                    await finish([`❌ Pairing failed (code ${status || 'unknown'}).`, 'Check the number and try again.']);
-                }
-            }
-        });
-
-        if (first && !s.authState.creds.registered) {
-            await delay(3000);
-            const code = await s.requestPairingCode(number);
-            const shown = code?.match(/.{1,4}/g)?.join('-') || code;
-            await m.reply(box('PAIR CODE', [
-                `📱 Number : ${number}`,
-                `🔑 Code   : *${shown}*`,
-                '',
-                'WhatsApp > Linked devices >',
-                'Link with phone number, then',
-                'type the code. Expires in 3 min.'
-            ]));
-        }
-    };
-
-    timer = setTimeout(() => finish(['⌛ Pairing timed out. Run it again.']), TIMEOUT_MS);
+    const last = lastUse.get(m.sender) || 0;
+    if (Date.now() - last < COOLDOWN) {
+        const left = Math.ceil((COOLDOWN - (Date.now() - last)) / 1000);
+        return m.reply(box('⏳ *𝗣𝗟𝗘𝗔𝗦𝗘 𝗪𝗔𝗜𝗧*', `➤ Try again in ${left}s.`));
+    }
+    lastUse.set(m.sender, Date.now());
 
     try {
-        await connect(true);
+        await m.react('⌛');
+        const { data } = await axios.get(base, { params: { number }, timeout: 60000 });
+        const code = data?.code || data?.data?.code || data?.pairingCode || data?.pairing_code;
+        if (!code) throw new Error('Pairing server did not return a code');
+
+        await m.reply(box(
+            '🔗 *𝗣𝗔𝗜𝗥𝗜𝗡𝗚 𝗖𝗢𝗗𝗘*',
+            `➤ Number : ${number}`,
+            '➤ Open WhatsApp ▸ Linked devices',
+            '➤ Link with phone number, enter the code below',
+            '➤ The code expires quickly.'
+        ));
+        await m.reply(String(code));
+        await m.react('✅');
     } catch (err) {
-        console.error('[FREEZER-MD] pair error:', err);
-        await finish([`❌ ${err.message}`]);
+        console.error('[PAIR] Error:', err.message);
+        lastUse.delete(m.sender);
+        await m.react('❌').catch(() => {});
+        await m.reply(box('❌ *𝗣𝗔𝗜𝗥 𝗘𝗥𝗥𝗢𝗥*', `➤ ${err.message}`, '➤ Please try again.'));
     }
 });

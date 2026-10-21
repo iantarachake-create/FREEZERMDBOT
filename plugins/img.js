@@ -1,102 +1,90 @@
-'use strict';
-
 const axios = require('axios');
 const { cmd } = require('../arslan');
-const { box } = require('../lib/groupTools');
+const { makeBox, UA, FOOTER, quotedText } = require('../freezer-ui');
 
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+const box = makeBox('Image Center');
 
-async function fromBing(q) {
+const GIMAGE_API = 'https://api.delirius.online/search/gimage';
+const MAX_IMAGES = 5;
+
+const isUrl = (u) => /^https?:\/\//i.test(String(u || ''));
+
+async function viaApi(query) {
+    const { data } = await axios.get(GIMAGE_API, { params: { query }, timeout: 30000 });
+    const list = data?.data || data?.result || data?.results || [];
+    return list
+        .map(i => (typeof i === 'string' ? i : i?.url || i?.image || i?.link))
+        .filter(isUrl);
+}
+
+// Backup source if the API is down
+async function viaBing(query) {
     const { data } = await axios.get('https://www.bing.com/images/search', {
-        params: { q, form: 'HDRSC2', first: 1, adlt: 'strict' },
-        headers: { 'User-Agent': UA, 'Accept-Language': 'en-US,en;q=0.9' },
-        timeout: 15000
+        params: { q: query, form: 'HDRSC2' },
+        headers: { 'User-Agent': UA },
+        timeout: 30000
     });
     const urls = [];
     const re = /murl&quot;:&quot;(.*?)&quot;/g;
-    let x;
-    while ((x = re.exec(String(data)))) urls.push(x[1].replace(/&amp;/g, '&'));
-    return urls;
+    let hit;
+    while ((hit = re.exec(String(data)))) urls.push(hit[1].replace(/&amp;/g, '&'));
+    return urls.filter(isUrl);
 }
 
-async function fromDDG(q) {
-    const page = await axios.get('https://duckduckgo.com/', {
-        params: { q, iax: 'images', ia: 'images' }, headers: { 'User-Agent': UA }, timeout: 15000
-    });
-    const vqd = /vqd=["']?([\d-]+)["']?/.exec(String(page.data))?.[1];
-    if (!vqd) return [];
-    const { data } = await axios.get('https://duckduckgo.com/i.js', {
-        params: { l: 'us-en', o: 'json', q, vqd, f: ',,,,,', p: '1' },
-        headers: { 'User-Agent': UA, Referer: 'https://duckduckgo.com/' },
-        timeout: 15000
-    });
-    return (data?.results || []).map(r => r.image).filter(Boolean);
-}
-
-async function download(url) {
-    const res = await axios.get(url, {
-        responseType: 'arraybuffer', timeout: 10000, maxContentLength: 6 * 1024 * 1024,
-        headers: { 'User-Agent': UA, Referer: new URL(url).origin }
-    });
-    const type = String(res.headers['content-type'] || '');
-    if (!/^image\/(jpe?g|png|webp)/i.test(type)) throw new Error('not a usable image');
-    const buf = Buffer.from(res.data);
-    if (buf.length < 2000) throw new Error('too small');
-    return buf;
+async function findImages(query) {
+    try {
+        const r = await viaApi(query);
+        if (r.length) return r;
+    } catch (_) { /* fall back to bing */ }
+    return viaBing(query);
 }
 
 cmd({
     pattern: 'img',
     name: 'img',
     category: 'Downloaders',
-    description: 'Search and send images',
-    aliases: ['image', 'imgsearch', 'pic'],
+    aliases: ['image', 'gimage', 'imgsearch'],
+    description: 'Search images on the web',
     filename: __filename
 }, async (sock, m, args) => {
-    const p = global.BOT_PREFIX || '.';
-    const raw = args.join(' ').trim();
-    const [queryPart, countPart] = raw.split('|').map(s => s.trim());
-    const query = queryPart || '';
-    const count = Math.min(Math.max(parseInt(countPart, 10) || 4, 1), 8);
+    const prefix = global.BOT_PREFIX || '.';
+    let count = 3;
+    const words = [];
+    for (const a of args || []) {
+        const hit = /^-([1-5])$/.exec(a);
+        if (hit) count = Number(hit[1]); else words.push(a);
+    }
+    const query = words.join(' ').trim() || quotedText(m);
 
     if (!query) {
-        return m.reply(box('IMAGE SEARCH', [
-            '🔎 Search the web for images',
+        return m.reply(box(
+            '🖼️ *𝗜𝗠𝗔𝗚𝗘 𝗦𝗘𝗔𝗥𝗖𝗛*',
+            '➤ Enter what you want to search.',
             '',
-            `★ ${p}img maasai mara sunset`,
-            `★ ${p}img lion cubs | 6   (1-8 images)`
-        ]));
+            '📌 *𝗘𝗫𝗔𝗠𝗣𝗟𝗘𝗦*',
+            `➤ ${prefix}img lamborghini`,
+            `➤ ${prefix}img black cat -5  (up to ${MAX_IMAGES})`
+        ));
     }
 
-    await m.react('⌛').catch(() => {});
+    try {
+        await m.react('🔎');
+        const urls = await findImages(query);
+        if (!urls.length) throw new Error(`No images found for: ${query}`);
 
-    let candidates = [];
-    for (const source of [fromBing, fromDDG]) {
-        try {
-            candidates = [...new Set(await source(query))];
-            if (candidates.length) break;
-        } catch (err) {
-            console.error(`[FREEZER-MD] img ${source.name} error:`, err.message);
+        let sent = 0;
+        for (const url of urls.slice(0, 15)) {
+            if (sent >= count) break;
+            try {
+                await m.reply({ image: { url }, caption: `🖼️ ${query}\n\n${FOOTER}` });
+                sent++;
+            } catch (_) { /* bad link, try the next one */ }
         }
-    }
-
-    if (!candidates.length) {
+        if (!sent) throw new Error('Could not load any of the images');
+        await m.react('✅');
+    } catch (err) {
+        console.error('[IMG] Error:', err.message);
         await m.react('❌').catch(() => {});
-        return m.reply(box('IMAGE SEARCH', ['❌ No images found.']));
+        await m.reply(box('❌ *𝗜𝗠𝗚 𝗘𝗥𝗥𝗢𝗥*', `➤ ${err.message}`, '➤ Please try again.'));
     }
-
-    const results = await Promise.allSettled(candidates.slice(0, count * 3).map(download));
-    const images = results.filter(r => r.status === 'fulfilled').map(r => r.value).slice(0, count);
-
-    if (!images.length) {
-        await m.react('❌').catch(() => {});
-        return m.reply(box('IMAGE SEARCH', ['❌ Could not download any image.', 'Try different keywords.']));
-    }
-
-    for (let i = 0; i < images.length; i++) {
-        const caption = i === 0 ? box('IMAGE SEARCH', [`🔎 ${query}`, `🖼️ ${images.length} result(s)`]) : '';
-        if (i === 0) await m.reply(images[i], { caption });
-        else await sock.sendMessage(m.from, { image: images[i] });
-    }
-    await m.react('✅').catch(() => {});
 });

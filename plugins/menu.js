@@ -21,7 +21,7 @@ function formatUptime(sec) {
 }
 
 function getTimeInfo() {
-    const tz = global.timezone || undefined;
+    const tz = global.timezone || 'Africa/Accra';
     const now = new Date();
     const hour = Number(new Intl.DateTimeFormat('en-GB', {
         hour: 'numeric', hourCycle: 'h23', timeZone: tz
@@ -80,12 +80,11 @@ const OVERRIDES = {
 
 /* =========================================================
    NATIVE COMMANDS (handled inside index.js, not plugins)
+   Empty on purpose: the menu lists only what is really loaded.
+   Add names here ONLY for commands that truly exist, e.g.
+   { creative: ['sticker'] }
 ========================================================= */
-const NATIVE = {
-    creative: ['sticker'],
-    security: ['anticall', 'antispam', 'warn', 'resetwarn'],
-    owner:    ['broadcast', 'backup', 'restore']
-};
+const NATIVE = {};
 
 /* Commands pinned to the top of their category, in this order */
 const PINNED = {
@@ -100,23 +99,25 @@ function buildMenu() {
     const grouped = {};
     const seen = new Set();
 
-    const add = (name, category) => {
-        const n = String(name || '').trim().toLowerCase();
+    const addCmd = (name, category) => {
+        const n = String(name || '').trim();
         if (!n || seen.has(n)) return;
         seen.add(n);
-        const key = (OVERRIDES[n] || String(category || 'general')).trim().toLowerCase() || 'general';
+        const key = String(OVERRIDES[n.toLowerCase()] || category || 'General').trim().toLowerCase() || 'general';
         (grouped[key] ||= []).push(n);
     };
 
+    // Same logic as the PopKid menu: build from the plugins that are actually loaded
     if (global.plugins instanceof Map) {
-        for (const plugin of new Set(global.plugins.values())) {
-            if (!plugin || !plugin.name || plugin.hidden) continue;
-            add(plugin.name, plugin.category);
+        for (const plugin of global.plugins.values()) {
+            if (!plugin || !plugin.name) continue;
+            if (plugin.hidden) continue;
+            addCmd(plugin.name, plugin.category);
         }
     }
 
     for (const [category, names] of Object.entries(NATIVE)) {
-        names.forEach(n => add(n, category));
+        names.forEach(n => addCmd(n, category));
     }
 
     const known = CATEGORIES.map(c => c[0]);
@@ -131,8 +132,12 @@ function buildMenu() {
         const icon = meta ? meta[1] : '📂';
         const label = meta ? meta[2] : key.toUpperCase();
 
-        const pinned = (PINNED[key] || []).filter(n => list.includes(n));
-        const rest = list.filter(n => !pinned.includes(n)).sort((a, b) => a.localeCompare(b));
+        const pinned = (PINNED[key] || [])
+            .map(p => list.find(n => n.toLowerCase() === p))
+            .filter(Boolean);
+        const rest = list
+            .filter(n => !pinned.includes(n))
+            .sort((a, b) => a.localeCompare(b));
 
         sections.push([
             `┏▣ ◈ ◈ *${icon} ${label}* ◈`,
@@ -144,7 +149,7 @@ function buildMenu() {
     const mode = global.botMode === 'private' ? 'PRIVATE' : 'PUBLIC';
     const dev = String(global.ownerName || 'FREEZER').toUpperCase();
     const version = String(global.BOT_VERSION || 'V1').toUpperCase();
-    const totalCommands = seen.size;
+    const totalCommands = seen.size; // exactly what is listed below
 
     const { greeting, time } = getTimeInfo();
     const ownerShown = String(global.ownerName || 'Freezer');

@@ -79,12 +79,14 @@ const OVERRIDES = {
 };
 
 /* =========================================================
-   NATIVE COMMANDS (handled inside index.js, not plugins)
-   Empty on purpose: the menu lists only what is really loaded.
-   Add names here ONLY for commands that truly exist, e.g.
-   { creative: ['sticker'] }
+   NATIVE COMMANDS (handled inside index.js -> handleNativeCommand,
+   not plugins). These really exist in this base.
 ========================================================= */
-const NATIVE = {};
+const NATIVE = {
+    creative: ['sticker'],
+    security: ['anticall', 'antispam', 'warn', 'resetwarn'],
+    owner:    ['broadcast', 'backup', 'restore']
+};
 
 /* Commands pinned to the top of their category, in this order */
 const PINNED = {
@@ -152,7 +154,7 @@ function buildMenu() {
     const totalCommands = seen.size; // exactly what is listed below
 
     const { greeting, time } = getTimeInfo();
-    const ownerShown = String(global.ownerName || 'Freezer');
+    const ownerShown = String(global.ownerName || 'Freezer').replace(/[^\p{L}\p{N}\s._-]/gu, '').trim() || 'Freezer'; // config.js name has emojis already
     const ram = (process.memoryUsage().rss / 1024 / 1024).toFixed(1);
 
     const header = [
@@ -185,6 +187,34 @@ function buildMenu() {
 }
 
 /* =========================================================
+   MENU IMAGE (loaded once, then cached so the menu opens fast)
+========================================================= */
+const IMAGE_TTL = 10 * 60 * 1000;
+let imageCache = { source: null, buffer: null, at: 0 };
+
+async function loadMenuImage() {
+    const source = global.menuImage;
+    if (!source) return null;
+
+    if (imageCache.buffer && imageCache.source === source && Date.now() - imageCache.at < IMAGE_TTL) {
+        return imageCache.buffer;
+    }
+
+    let buffer;
+    if (/^https?:\/\//i.test(source)) {
+        const res = await fetch(source, { signal: AbortSignal.timeout(15000) });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        buffer = Buffer.from(await res.arrayBuffer());
+    } else {
+        buffer = fs.readFileSync(source);
+    }
+    if (!buffer?.length) throw new Error('Empty image buffer');
+
+    imageCache = { source, buffer, at: Date.now() };
+    return buffer;
+}
+
+/* =========================================================
    COMMAND
 ========================================================= */
 cmd({
@@ -195,36 +225,26 @@ cmd({
     aliases: ['help', 'cmdlist', 'commands'],
     filename: __filename
 }, async (sock, m) => {
+    let menuText;
     try {
-        const menuText = buildMenu();
-
-        // Text only if no image is configured
-        if (!global.menuImage) {
-            return await m.reply(menuText);
-        }
-
-        try {
-            let imageBuffer;
-
-            if (/^https?:\/\//i.test(global.menuImage)) {
-                const res = await fetch(global.menuImage, { signal: AbortSignal.timeout(15000) });
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                imageBuffer = Buffer.from(await res.arrayBuffer());
-            } else {
-                imageBuffer = fs.readFileSync(global.menuImage);
-            }
-
-            if (!imageBuffer?.length) throw new Error('Empty image buffer');
-
-            await m.reply(imageBuffer, { caption: menuText });
-        } catch (imgError) {
-            console.error('[FREEZER-MD] Menu image failed:', imgError.message);
-            await m.reply(menuText);
-        }
+        menuText = buildMenu();
     } catch (error) {
-        console.error('[FREEZER-MD] Menu command error:', error);
-        try {
-            await m.reply('❌ Menu error: ' + error.message);
-        } catch (_) {}
+        console.error('[FREEZER-MD] Menu build error:', error);
+        return m.reply('❌ Menu error: ' + error.message).catch(() => {});
+    }
+
+    // 1) image + menu as caption
+    try {
+        const image = await loadMenuImage();
+        if (image) return await m.reply(image, { caption: menuText });
+    } catch (imgError) {
+        console.error('[FREEZER-MD] Menu image failed, sending text:', imgError.message);
+    }
+
+    // 2) plain text (no image configured, or the image could not be loaded/sent)
+    try {
+        await m.reply(menuText);
+    } catch (error) {
+        console.error('[FREEZER-MD] Menu send error:', error);
     }
 });

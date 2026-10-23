@@ -1,5 +1,5 @@
 const { cmd } = require('../arslan');
-const { makeBox, getMedia, convert, extOf, sizeText } = require('../freezer-ui');
+const { makeBox, getMedia, convert, extOf, sizeText } = require('../lib/freezer-ui');
 
 const box = makeBox('Media Center');
 const MAX_BYTES = 50 * 1024 * 1024;
@@ -8,7 +8,7 @@ cmd({
     pattern: 'toaudio',
     name: 'toaudio',
     category: 'Tools',
-    aliases: ['tomp3', 'mp3', 'extractaudio'],
+    aliases: ['extractaudio'],
     description: 'Convert a video or voice note to mp3 audio',
     filename: __filename
 }, async (sock, m) => {

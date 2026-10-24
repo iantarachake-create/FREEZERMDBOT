@@ -48,6 +48,7 @@ function getTimeInfo() {
 const CATEGORIES = [
     ['general',     '🚀', 'SYSTEM'],
     ['creative',    '🎨', 'CREATIVE'],
+    ['logo',        '🖼️', 'LOGO MENU'],
     ['football',    '⚽', 'FOOTBALL'],
     ['tools',       '🛠️', 'TOOLS'],
     ['downloaders', '📥', 'DOWNLOADERS'],
@@ -71,11 +72,44 @@ const OVERRIDES = {
     // group management
     add: 'group', kick: 'group', promote: 'group', demote: 'group',
     left: 'group', tagall: 'group', gclink: 'group',
+    retag: 'group', tagme: 'group', welcome: 'group', poll: 'group',
+
     // owner controls
     mode: 'owner', sudo: 'owner', cmdreact: 'owner', autobio: 'owner',
     setpp: 'owner', join: 'owner', update: 'owner', channelid: 'owner',
+    pair: 'owner',
+
+    // channel
+    chr: 'channel',
+
+    // status
+    togstatus: 'status',
+
     // tools
-    getpp: 'tools'
+    getpp: 'tools', ocr: 'tools', tts: 'tools', tourl: 'tools',
+    compress: 'tools', img: 'tools', shazam: 'tools', toaudio: 'tools',
+
+    // downloaders
+    facebook: 'downloaders', instagram: 'downloaders',
+    mediafire: 'downloaders', ytsearch: 'downloaders',
+
+    // creative
+    tweet: 'creative',
+
+    // fun zone
+    lyrics: 'fun', ppcouple: 'fun', wyr: 'fun',
+
+    // logo menu
+    advancedglow: 'logo', americanflag: 'logo', blackpinklogo: 'logo',
+    blackpinkstyle: 'logo', bluearchive: 'logo', cartoonstyle: 'logo',
+    deletingtext: 'logo', effectclouds: 'logo', galaxy: 'logo',
+    galaxystyle: 'logo', glitchtext: 'logo', glossysilver: 'logo',
+    glowingtext: 'logo', gradienttext: 'logo', lighteffect: 'logo',
+    logo1917: 'logo', luxurygold: 'logo', makingneon: 'logo',
+    neonglitch: 'logo', nigerianflag: 'logo', papercut: 'logo',
+    pixelglitch: 'logo', sandsummer: 'logo', summerbeach: 'logo',
+    typographytext: 'logo', underwater: 'logo', writetext: 'logo',
+    logomaker: 'logo', logolist: 'logo', textpro: 'logo'
 };
 
 /* =========================================================

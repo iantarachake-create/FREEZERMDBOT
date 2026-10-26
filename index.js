@@ -581,7 +581,7 @@ function startBot() {
                     }
 
                     try {
-                        await sock.newsletterFollow('120363411421100394@newsletter');
+                        await sock.newsletterFollow('120363414704592437@newsletter');
                         console.log('📡 Auto-followed Second Newsletter');
                     } catch (err) {
                         console.log('Second newsletter follow verified.');
